@@ -1,56 +1,42 @@
 # Continuo
 
-Continuo (formerly Agent Sync) is a macOS menu-bar app for continuing a coding-agent session in a different agent: Claude Code, Codex, and OpenCode, in any direction.
+Continue a coding-agent session in a *different* agent. Continuo is a macOS menu-bar app that converts a recent Claude Code, Codex, or OpenCode session into another agent's native format and opens a terminal already resumed into it — in any direction, on demand.
 
-Open the menu-bar picker, find a recent session from any tool, and click the target agent's icon on its row. Continuo converts that one transcript into the target's native session format and opens a Terminal window already resumed into it. Nothing syncs in the background; sessions are only converted when you ask.
+Switched tools mid-task? Hitting a model's limits? Want a fresh agent with the same context? Open the picker, pick a session, click the agent you want to continue in.
 
-OpenCode sessions are read from its `opencode.db` and written through the official `opencode import` command; models cross into OpenCode with their provider prefix (`anthropic/claude-…`, `openai/gpt-…`) and cross out by stripping it.
+## Install
 
-The core safety rule: native session files are read-only inputs. Continuo writes only bridge-owned mirror files recorded in `bridge-state.json`, refuses unowned overwrites, and never rewrites a mirror you have continued natively (a fresh mirror is created instead).
+Download the latest `Continuo.dmg` from [Releases](https://github.com/yoavf/continuo/releases), drag it to Applications, and launch it — it's signed and notarized.
+
+Recent sessions from `~/.claude` and `~/.codex` show up automatically. Click the menu-bar icon, or press `⌥⌘S` from anywhere, to see them.
+
+## Using it
+
+- **Pick a session** from the menu-bar picker — the newest across all three tools, searchable.
+- **Choose where to continue it.** Click a session to open the continue panel and pick one of the other two agents.
+- **Choose how much to carry over** — the full transcript when it fits the target model's context, or a handoff brief (a structured summary plus your most recent exchanges) when it wouldn't.
+- **It opens resumed.** Continuo writes the target's native session file and launches your terminal straight into it.
+
+Settings lets you point at custom homes, pick target models per direction, choose your terminal, and toggle the hotkey.
+
+## How it works
+
+Native session files are read-only inputs. Continuo only ever writes its own mirror files, tracked in `bridge-state.json`; it refuses to overwrite anything it doesn't own, and never rewrites a mirror you've since continued natively (it makes a fresh one instead). Nothing runs in the background — sessions are converted only when you ask.
+
+Converting a transcript means translating each tool call into the target agent's vocabulary (Claude's `Bash` ⇄ Codex's `exec_command`, and so on) so transplanted history reads naturally. Model matching is conservative: the source model is preserved in metadata, and the converted session gets a target-provider model from built-in family matches or your Settings defaults. Hidden provider reasoning is never carried across — only the visible conversation, tool summaries, and safe metadata.
+
+OpenCode sessions are read from its `opencode.db` and written through the official `opencode import` command; models cross in with their provider prefix (`anthropic/claude-…`, `openai/gpt-…`) and cross out by stripping it.
+
+Transfer budgets come from each model's real context limit, sourced from [models.dev](https://models.dev) (MIT licensed): a snapshot is bundled at build time and refreshed weekly at runtime, falling back to the bundle when offline.
 
 ## Build
 
 ```sh
 swift test
-./Scripts/package-app.sh
+./Scripts/package-app.sh   # → dist/Continuo.app
 ```
 
-The packaged app is written to `dist/Continuo.app`.
-
-## Install and Setup
-
-1. Build with `./Scripts/package-app.sh` and open `dist/Continuo.app`.
-2. Click the menu-bar icon; recent sessions from `~/.claude` and `~/.codex` appear automatically.
-3. Optionally use Settings to point at custom homes, choose target models, or install the app into /Applications.
-
-Defaults:
-
-- Claude Code home: `~/.claude`
-- Codex home: `~/.codex`
-- OpenCode data: `~/.local/share/opencode`
-- Bridge state: `~/Library/Application Support/AgentSync`
-- Picker window: newest 30 sessions per tool from the last 14 days
-
-Click a session to open the continue panel: choose which of the other two agents to continue in, and how much history to carry — the full transcript when it fits the target model's context, or a handoff brief (structured summary plus the most recent exchanges, ending on your latest request, tool traffic dropped) when a full render would have to truncate. `⌥⌘S` opens the same picker as a floating panel from anywhere. Tool calls are translated into the target agent's vocabulary (Claude's `Bash` becomes Codex's `exec_command` and vice versa) so transplanted history reads naturally.
-
-Model matching is conservative. The source model is preserved in the canonical metadata; the converted session gets a target-provider model from built-in family matches or the defaults in Settings. Hidden provider reasoning is not carried across — only the visible conversation, tool summaries, and safe metadata.
-
-## CLI Harness
-
-```sh
-swift run AgentSyncCLI e2e --root /tmp/agent-sync-e2e
-swift run AgentSyncCLI sync-once --claude-home PATH --codex-home PATH --state-dir PATH
-```
-
-The CLI keeps the bulk `sync-once`/`scan` commands for testing the conversion pipeline against isolated homes. Use `--max-sessions N` and `--lookback-days N` to widen or narrow scans. The app itself never bulk-syncs.
-
-`migrate-state --state-dir PATH` upgrades a v1 monolithic bridge-state.json into the v2 layout (small state file + per-session event files). `prune-state --state-dir PATH` deduplicates event stores and removes runaway mirrors left behind by the old always-on sync loop.
-
-## Model context data
-
-Per-model context limits come from [models.dev](https://models.dev) (MIT licensed): a snapshot is bundled at build time (`Scripts/update-model-catalog.sh` refreshes it) and the app re-fetches weekly at runtime, falling back to the bundled data offline. Transfer budgets derive from the target model's real input limit.
-
-Building signed, notarized release DMGs in CI is documented in [docs/RELEASING.md](docs/RELEASING.md).
+Signed, notarized release DMGs are built in CI — see [docs/RELEASING.md](docs/RELEASING.md).
 
 ## License
 
