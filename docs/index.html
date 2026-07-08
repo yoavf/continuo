@@ -103,13 +103,29 @@
   }
 
   footer {
-    position: fixed; left: 20px; bottom: 15px; z-index: 20;
+    position: fixed; top: 0; right: 0; bottom: 0; width: 42px; z-index: 20;
+    display: flex; align-items: center; justify-content: center; pointer-events: none;
+  }
+  footer span {
+    pointer-events: auto; transform: rotate(-90deg); white-space: nowrap;
     font-family: ui-sans-serif, -apple-system, sans-serif; font-size: 14px; color: var(--ink-soft);
   }
   footer a { color: var(--sepia); text-decoration: none; font-weight: 600; }
   footer a:hover { text-decoration: underline; }
   .github-button { line-height: 0; }
   .topright { position: fixed; top: 16px; right: 18px; z-index: 20; line-height: 0; }
+  /* how it works — scroll-down section */
+  html { scroll-behavior: smooth; }
+  .hiw-link { margin-top: 12px; display: inline-block; font-family: ui-sans-serif,-apple-system,sans-serif; font-size: 14px; font-weight: 600; color: var(--sepia); text-decoration: none; border-bottom: 1.5px solid var(--line); padding-bottom: 2px; }
+  .hiw-link:hover { border-bottom-color: var(--sepia); }
+  .hiw { position: relative; z-index: 6; background: #fbf4e7; padding: 78px 28px 96px; min-height: 100vh; display: flex; flex-direction: column; justify-content: center; }
+  .hiw h2 { text-align: center; font-family: ui-sans-serif,-apple-system,sans-serif; font-size: 14px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: var(--ink-soft); margin: 0 0 16px; }
+  .hiw-lead { font-family: ui-sans-serif,-apple-system,sans-serif; font-size: 18px; color: #4c4e52; text-align: center; max-width: 580px; margin: 0 auto 40px; line-height: 1.5; }
+  .hiw-steps { display: grid; grid-template-columns: repeat(3,1fr); gap: 26px; max-width: 1040px; margin: 0 auto; }
+  .hiw-steps figure { margin: 0; }
+  .hiw-steps img { width: 100%; border-radius: 12px; box-shadow: 0 14px 34px rgba(40,25,10,0.22); display: block; }
+  .hiw-steps figcaption { font-family: ui-sans-serif,-apple-system,sans-serif; font-size: 14px; color: #5c4630; margin-top: 13px; line-height: 1.45; }
+  @media (max-width: 700px) { .hiw-steps { grid-template-columns: 1fr; } .hiw { padding: 56px 22px 72px; } }
 </style>
 </head>
 <body>
@@ -175,9 +191,21 @@
         <code class="brew">brew install --cask yoavf/tap/continuo</code>
       </div>
       <div class="meta">Free &amp; open source</div>
+      <a class="hiw-link" href="#hiw">See how it works ↓</a>
     </div>
   </main>
-  <footer><a href="https://github.com/yoavf/continuo">GitHub</a> · App by <a href="https://x.com/yoavf">@yoavf</a></footer>
+
+  <section class="hiw" id="hiw">
+    <h2>How it works</h2>
+    <p class="hiw-lead">Pick a recent session, choose where to continue it, and it opens there — already resumed.</p>
+    <div class="hiw-steps">
+      <figure><img src="screenshots/picker.webp" alt="Continuo session picker"><figcaption>Pick a session — every agent, one searchable list.</figcaption></figure>
+      <figure><img src="screenshots/continue.webp" alt="Continue panel"><figcaption>Choose the target agent &amp; how much to carry over.</figcaption></figure>
+      <figure><img src="screenshots/settings.webp" alt="Settings"><figcaption>Set homes, models, terminal, and a global hotkey.</figcaption></figure>
+    </div>
+  </section>
+
+  <footer><span><a href="https://github.com/yoavf/continuo">GitHub</a> · App by <a href="https://x.com/yoavf">@yoavf</a></span></footer>
   <script async defer src="https://buttons.github.io/buttons.js"></script>
   <script>
   (function () {
