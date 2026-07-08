@@ -23,33 +23,37 @@ if [ -z "${SIGNING_IDENTITY:-}" ]; then
 fi
 echo "Signing as: $SIGNING_IDENTITY"
 
+notarize() {
+    xcrun notarytool submit "$1" \
+        --key "$AC_API_KEY_PATH" \
+        --key-id "$AC_API_KEY_ID" \
+        --issuer "$AC_API_ISSUER_ID" \
+        --wait
+}
+
 # Sign with a hardened runtime (required for notarization). The nested
 # SwiftPM resource bundles carry only data (no Mach-O), so they aren't signed
 # separately — the app signature seals them as resources.
 codesign --force --options runtime --timestamp --sign "$SIGNING_IDENTITY" "$APP"
 codesign --verify --strict --verbose=2 "$APP"
 
-# Notarize a zip of the app (notarytool accepts zip or dmg; the app is what we
-# staple so it validates wherever it's copied).
+# Notarize + staple the app so it validates wherever it's copied out to.
 /usr/bin/ditto -c -k --keepParent "$APP" "$ZIP"
-xcrun notarytool submit "$ZIP" \
-    --key "$AC_API_KEY_PATH" \
-    --key-id "$AC_API_KEY_ID" \
-    --issuer "$AC_API_ISSUER_ID" \
-    --wait
+notarize "$ZIP"
 rm -f "$ZIP"
-
 xcrun stapler staple "$APP"
 xcrun stapler validate "$APP"
 
-# Package the stapled app into a drag-to-Applications DMG, then staple the DMG
-# too so a downloaded .dmg passes Gatekeeper offline.
+# Package the stapled app into a drag-to-Applications DMG, then notarize and
+# staple the DMG itself (a ticket is keyed to the DMG's own hash, so the
+# download passes Gatekeeper offline).
 STAGE="$(mktemp -d)"
 cp -R "$APP" "$STAGE/"
 ln -s /Applications "$STAGE/Applications"
 rm -f "$DMG"
 hdiutil create -volname "Continuo" -srcfolder "$STAGE" -ov -format UDZO "$DMG"
 rm -rf "$STAGE"
+notarize "$DMG"
 xcrun stapler staple "$DMG"
 
 echo "Done: $DMG"
