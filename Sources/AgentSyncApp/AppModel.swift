@@ -265,6 +265,10 @@ struct SessionItem: Identifiable, Equatable, Sendable {
 
 @MainActor
 final class AppModel: ObservableObject {
+    /// One instance shared by the status-item popover, the Settings scene, and
+    /// the global-hotkey panel.
+    static let shared = AppModel()
+
     @Published var sessions: [SessionItem] = []
     @Published var observedModels: [AgentKind: [String]] = [:]
     @Published var status: AppStatus = .idle
@@ -283,8 +287,9 @@ final class AppModel: ObservableObject {
                 self?.refresh()
             }
         }
-        // Opening the menu-bar popover activates the app; onAppear only fires
-        // once at launch because MenuBarExtra builds its content eagerly.
+        // Opening the status-item popover activates the app; refresh then so
+        // the list is current even if the hosted view stays mounted between
+        // openings.
         activationObserver = NotificationCenter.default.addObserver(
             forName: NSApplication.didBecomeActiveNotification,
             object: nil,

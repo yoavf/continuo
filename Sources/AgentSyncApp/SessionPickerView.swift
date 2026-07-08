@@ -3,7 +3,6 @@ import SwiftUI
 
 struct SessionPickerView: View {
     @ObservedObject var model: AppModel
-    @Environment(\.openSettings) private var openSettings
     @State private var query = ""
     @State private var selectedItem: SessionItem?
 
@@ -78,23 +77,21 @@ struct SessionPickerView: View {
             .disabled(model.isRefreshing)
             .help("Rescan recent sessions")
 
-            Menu {
-                // SettingsLink doesn't reliably fire from a MenuBarExtra menu
-                // in a Dock-less app; the environment action + activation does.
-                Button("Settings…") {
-                    NSApp.activate(ignoringOtherApps: true)
-                    openSettings()
-                }
-                Divider()
-                Button("Quit Continuo") {
-                    NSApplication.shared.terminate(nil)
-                }
+            Button {
+                AppDelegate.openSettings()
             } label: {
                 Image(systemName: "gearshape")
             }
             .buttonStyle(.borderless)
-            .menuIndicator(.hidden)
-            .fixedSize()
+            .help("Settings")
+
+            Button {
+                NSApplication.shared.terminate(nil)
+            } label: {
+                Image(systemName: "power")
+            }
+            .buttonStyle(.borderless)
+            .help("Quit Continuo")
         }
         .padding(10)
     }
