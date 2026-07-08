@@ -7,7 +7,7 @@
 <meta name="description" content="A macOS menu-bar app that continues a Claude Code, Codex, or OpenCode session in a different agent — any direction, on demand.">
 <meta property="og:title" content="Continuo">
 <meta property="og:description" content="Continue a coding-agent session in a different agent — Claude Code, Codex, or OpenCode, any direction.">
-<meta property="og:image" content="poster.png">
+<meta property="og:image" content="poster.webp">
 <meta property="og:type" content="website">
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><circle cx='50' cy='50' r='42' fill='%23ff6b35'/></svg>">
 <style>
@@ -16,151 +16,246 @@
     --ink-soft: #66686d;
     --accent: #17181a;
     --line: rgba(20,22,26,0.12);
-    --warm: #b8501f;
+    --sepia: #8a4a1e;
   }
   * { box-sizing: border-box; margin: 0; padding: 0; }
   html { -webkit-text-size-adjust: 100%; }
   body {
     font-family: "Iowan Old Style", Palatino, Georgia, serif;
     color: var(--ink);
-    background: #f7f7f6;
+    background: #f4ecdb;
     -webkit-font-smoothing: antialiased;
+    overflow-x: hidden;
   }
-  .wrap { max-width: 1000px; margin: 0 auto; padding: 0 28px; }
 
-  /* Hero */
-  .hero {
-    min-height: 100vh;
-    display: grid;
-    grid-template-columns: minmax(230px, 330px) 1fr;
-    gap: 60px;
-    align-items: center;
+  .hero { position: relative; min-height: 100vh; display: flex; align-items: center; justify-content: center; }
+  .scene { position: absolute; inset: 0; z-index: 0; overflow: hidden; transform: scaleX(-1); }
+  .scene img {
+    position: absolute; inset: 0; width: 100%; height: 100%;
+    object-fit: cover; object-position: center 60%;
   }
-  .poster {
-    width: 100%;
-    border-radius: 12px;
-    box-shadow: 0 24px 64px rgba(30,20,10,0.22);
-    display: block;
+  /* left = the real painting; fades out toward the right */
+  .paint {
+    -webkit-mask-image: linear-gradient(to right, #000 0%, #000 40%, transparent 66%);
+            mask-image: linear-gradient(to right, #000 0%, #000 40%, transparent 66%);
   }
-  .lede h1 {
-    font-size: clamp(30px, 4.2vw, 46px);
-    font-weight: 600;
-    line-height: 1.12;
-    letter-spacing: -0.01em;
-    margin-bottom: 18px;
+  /* right = a line/sketch derived from the SAME image */
+  .sketch {
+    filter: url(#sketchify);
+    -webkit-mask-image: linear-gradient(to right, transparent 40%, #000 66%);
+            mask-image: linear-gradient(to right, transparent 40%, #000 66%);
   }
-  .lede .sub {
+  /* keep the headline readable over the art */
+  .hero::after {
+    content: ""; position: absolute; inset: 0; z-index: 1; pointer-events: none;
+    background: radial-gradient(720px 460px at 50% 44%, rgba(244,236,219,0.86), rgba(244,236,219,0) 72%);
+  }
+
+  /* car: two synced layers masked by the SAME seam as the art, so the car
+     turns from painting into line-sketch exactly as it crosses the seam */
+  .carlayer { position: absolute; inset: 0; z-index: 2; pointer-events: none; }
+  /* mirrored composition: painted car shows on the right, sketch car on the left */
+  .carlayer.paint {
+    -webkit-mask-image: linear-gradient(to right, transparent 34%, #000 60%);
+            mask-image: linear-gradient(to right, transparent 34%, #000 60%);
+  }
+  .carlayer.sketch {
+    -webkit-mask-image: linear-gradient(to right, #000 0%, #000 34%, transparent 60%);
+            mask-image: linear-gradient(to right, #000 0%, #000 34%, transparent 60%);
+  }
+  .car { position: absolute; left: 0; top: 0; width: 56px; will-change: transform; }
+  .car svg { display: block; width: 100%; height: auto; }
+  /* the solid car sits behind the bridge's low rail — clip its bottom so the
+     wheels tuck behind it; the outline version stays whole */
+  .carlayer.paint .car svg { clip-path: inset(0 0 5px 0); }
+  @media (max-width: 720px) { .carlayer { display: none; } }
+  @media (prefers-reduced-motion: reduce) { .carlayer { display: none; } }
+
+  .content {
+    position: relative; z-index: 3;
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    text-align: center; padding: 64px 24px; gap: 15px;
+    transform: translateY(-4.5vh);
+  }
+  .wordmark { display: block; width: 262px; max-width: 72vw; height: auto; margin-bottom: 4px; }
+  h1 { font-size: clamp(26px, 3.6vw, 42px); font-weight: 600; line-height: 1.12; letter-spacing: -0.01em; max-width: 640px; }
+  .sub {
     font-family: ui-sans-serif, -apple-system, "Helvetica Neue", sans-serif;
-    font-size: 17px;
-    line-height: 1.5;
-    color: #4c4e52;
-    max-width: 460px;
-    margin-bottom: 28px;
+    font-size: 17px; line-height: 1.75; color: #4c4e52; max-width: 548px;
   }
+  .btnrow { display: flex; gap: 12px; flex-wrap: wrap; align-items: center; justify-content: center; margin-top: 6px; }
   .btn {
-    display: inline-block;
-    background: var(--accent);
-    color: #fff;
-    font-family: ui-sans-serif, -apple-system, sans-serif;
-    font-size: 17px; font-weight: 600;
-    text-decoration: none;
-    padding: 13px 28px;
-    border-radius: 11px;
-    box-shadow: 0 6px 18px rgba(20,22,26,0.22);
+    display: inline-block; background: var(--accent); color: #fff;
+    font-family: ui-sans-serif, -apple-system, sans-serif; font-size: 17px; font-weight: 600; text-decoration: none;
+    padding: 13px 28px; border-radius: 11px; box-shadow: 0 6px 18px rgba(20,22,26,0.22);
     transition: transform .12s ease, box-shadow .12s ease;
   }
   .btn:hover { transform: translateY(-2px); box-shadow: 0 10px 24px rgba(20,22,26,0.3); }
-  .meta {
-    font-family: ui-sans-serif, -apple-system, sans-serif;
-    font-size: 13px; color: var(--ink-soft); margin-top: 11px;
-  }
+  .btn.ghost { background: transparent; color: var(--ink); border: 1.5px solid rgba(20,22,26,0.22); box-shadow: none; }
+  .btn.ghost:hover { border-color: var(--ink); box-shadow: none; }
+  .btn.ghost .star { color: #e0a11a; }
+  .meta { font-family: ui-sans-serif, -apple-system, sans-serif; font-size: 13px; color: var(--ink-soft); }
+  .orsep { font-family: ui-sans-serif, -apple-system, sans-serif; font-size: 14px; color: var(--ink-soft); }
   .brew {
-    display: inline-block; margin-top: 18px;
-    background: #ececea;
-    border: 1px solid var(--line);
-    border-radius: 9px;
-    padding: 8px 13px;
-    font-family: ui-monospace, "SF Mono", Menlo, monospace;
-    font-size: 13px; color: var(--ink);
-    user-select: all;
+    display: inline-block; background: rgba(120,70,20,0.09); border: 1px solid var(--line); border-radius: 9px;
+    padding: 8px 13px; font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: 13px; color: var(--ink); user-select: all;
   }
-  .links {
-    font-family: ui-sans-serif, -apple-system, sans-serif;
-    font-size: 14px; margin-top: 20px;
-  }
-  .links a { color: var(--ink); text-decoration: none; font-weight: 600; border-bottom: 1.5px solid var(--line); }
-  .links a:hover { border-bottom-color: var(--ink); }
-
-  /* Real handoff strip */
-  .story { padding: 20px 0 84px; }
-  .story h2 {
-    font-family: ui-sans-serif, -apple-system, sans-serif;
-    text-align: center; font-size: 15px; font-weight: 600;
-    letter-spacing: 0.02em; color: var(--ink-soft);
-    text-transform: uppercase; margin-bottom: 28px;
-  }
-  .flow {
-    display: flex; align-items: center; justify-content: center;
-    gap: 22px; flex-wrap: wrap;
-  }
-  .shot { max-width: 380px; width: 100%; border-radius: 10px; box-shadow: 0 14px 40px rgba(30,20,10,0.18); }
-  .connector { text-align: center; font-family: ui-sans-serif, sans-serif; }
-  .mark {
-    width: 46px; height: 46px; border-radius: 13px; margin: 0 auto 6px;
-    background: var(--warm); color: #fff;
-    display: flex; align-items: center; justify-content: center;
-    font-size: 24px; box-shadow: 0 8px 20px rgba(184,80,31,0.35);
-  }
-  .connector .lbl { font-size: 13px; font-weight: 700; color: var(--ink); }
-  .connector .via { font-size: 12px; color: var(--ink-soft); }
 
   footer {
-    text-align: center; padding: 22px;
-    font-family: ui-sans-serif, -apple-system, sans-serif;
-    font-size: 12.5px; color: var(--ink-soft);
-    border-top: 1px solid var(--line);
+    position: fixed; left: 20px; bottom: 15px; z-index: 20;
+    font-family: ui-sans-serif, -apple-system, sans-serif; font-size: 14px; color: var(--ink-soft);
   }
-  footer a { color: var(--ink-soft); }
-
-  @media (max-width: 720px) {
-    .hero { grid-template-columns: 1fr; gap: 32px; padding: 56px 0 40px; text-align: center; min-height: auto; }
-    .poster { max-width: 260px; margin: 0 auto; }
-    .lede .sub, .brew { margin-left: auto; margin-right: auto; }
-    .mark { transform: rotate(90deg); }
-  }
+  footer a { color: var(--sepia); text-decoration: none; font-weight: 600; }
+  footer a:hover { text-decoration: underline; }
+  .github-button { line-height: 0; }
+  .topright { position: fixed; top: 16px; right: 18px; z-index: 20; line-height: 0; }
 </style>
 </head>
 <body>
-  <div class="wrap">
-    <section class="hero">
-      <img class="poster" src="poster.png" alt="Continuo — vintage travel-poster artwork of a bridge over a canyon at sunset">
-      <div class="lede">
-        <h1>Continue a coding-agent session in a different agent.</h1>
-        <p class="sub">Claude&nbsp;Code, Codex, and OpenCode — any direction, on demand, from your menu bar. Continuo converts one session into another agent's native format and opens it, already resumed.</p>
-        <a class="btn" href="https://github.com/yoavf/continuo/releases/latest/download/Continuo.dmg">Download for macOS</a>
-        <div class="meta">Free &amp; open source · Apple silicon · macOS 14+ · signed &amp; notarized</div>
-        <div class="brew">brew install --cask yoavf/tap/continuo</div>
-        <div class="links"><a href="https://github.com/yoavf/continuo">View source on GitHub ↗</a></div>
-      </div>
-    </section>
+  <!-- edge-detection filter that turns the painting into a sepia line sketch -->
+  <svg width="0" height="0" style="position:absolute">
+    <filter id="sketchify" color-interpolation-filters="sRGB">
+      <feColorMatrix type="saturate" values="0" result="gray"/>
+      <feConvolveMatrix in="gray" order="3" preserveAlpha="true"
+        kernelMatrix="1 1 1 1 -8 1 1 1 1" result="edges"/>
+      <feColorMatrix in="edges" type="matrix" result="tinted"
+        values="0 0 0 0 0.54
+                0 0 0 0 0.29
+                0 0 0 0 0.11
+                0.4 0.4 0.4 0 0"/>
+      <feComponentTransfer in="tinted">
+        <feFuncA type="linear" slope="3.2" intercept="0"/>
+      </feComponentTransfer>
+    </filter>
+  </svg>
 
-    <!-- Real-handoff story strip — enabled once story-claude.png / story-codex.png exist.
-    <section class="story">
-      <h2>Hit a limit in one? Pick up in another.</h2>
-      <div class="flow">
-        <img class="shot" src="story-claude.png" alt="A Claude Code session that has reached its usage limit">
-        <div class="connector">
-          <div class="mark">⇄</div>
-          <div class="lbl">Continuo</div>
-          <div class="via">Continue in Codex →</div>
-        </div>
-        <img class="shot" src="story-codex.png" alt="The same session resumed in Codex">
-      </div>
-    </section>
-    -->
+  <div class="topright">
+    <a class="github-button" href="https://github.com/yoavf/continuo" data-color-scheme="no-preference: light; light: light; dark: dark;" data-icon="octicon-star" data-show-count="true" aria-label="Star yoavf/continuo on GitHub">Star</a>
   </div>
-  <footer>
-    MIT licensed · Model context data from <a href="https://models.dev">models.dev</a>
-  </footer>
+
+  <main class="hero">
+    <div class="scene" aria-hidden="true">
+      <img class="paint" src="poster.webp" alt="">
+      <img class="sketch" src="poster.webp" alt="">
+    </div>
+
+    <div class="carlayer paint" aria-hidden="true">
+      <div class="car">
+        <svg viewBox="0 0 88 42" xmlns="http://www.w3.org/2000/svg">
+          <ellipse cx="82" cy="27" rx="12" ry="7" fill="#ffc571" opacity="0.75"/>
+          <path d="M5,34 C5,29 6,27 10,26 C12,21 16,18 22,18 C27,12 35,10 45,10 C54,10 60,13 64,19 C71,19 77,20 81,25 C84,27 84,32 81,34 Z" fill="#241708"/>
+          <path d="M27,17 C30,13 35,12 44,12 C50,12 54,13 57,17 Z" fill="#9a5f2b" opacity="0.55"/>
+          <circle cx="25" cy="34" r="7.5" fill="#181009"/>
+          <circle cx="64" cy="34" r="7.5" fill="#181009"/>
+          <circle cx="25" cy="34" r="2.8" fill="#5a4022"/>
+          <circle cx="64" cy="34" r="2.8" fill="#5a4022"/>
+          <circle cx="82" cy="27" r="2.3" fill="#fff2d8"/>
+        </svg>
+      </div>
+    </div>
+    <div class="carlayer sketch" aria-hidden="true">
+      <div class="car">
+        <svg viewBox="0 0 88 42" xmlns="http://www.w3.org/2000/svg" stroke="#7a3f18" stroke-linejoin="round" stroke-linecap="round">
+          <path d="M5,34 C5,29 6,27 10,26 C12,21 16,18 22,18 C27,12 35,10 45,10 C54,10 60,13 64,19 C71,19 77,20 81,25 C84,27 84,32 81,34 Z" fill="rgba(246,239,224,0.72)" stroke-width="2.2"/>
+          <path d="M27,17 C30,13 35,12 44,12 C50,12 54,13 57,17" fill="none" stroke-width="1.6"/>
+          <circle cx="25" cy="34" r="7.5" fill="rgba(246,239,224,0.85)" stroke-width="2"/>
+          <circle cx="64" cy="34" r="7.5" fill="rgba(246,239,224,0.85)" stroke-width="2"/>
+        </svg>
+      </div>
+    </div>
+
+    <div class="content">
+      <img class="wordmark" src="wordmark.webp" alt="Continuo">
+      <h1>Start in one coding agent,<br>finish in another.</h1>
+      <p class="sub">Claude&nbsp;Code, Codex, and OpenCode — start in one, and resume in another. Continuo converts the session into the target agent's native format and opens it right where you left off.</p>
+      <div class="btnrow">
+        <a class="btn" href="https://github.com/yoavf/continuo/releases/latest/download/Continuo.dmg">Download for macOS</a>
+        <span class="orsep">or</span>
+        <code class="brew">brew install --cask yoavf/tap/continuo</code>
+      </div>
+      <div class="meta">Free &amp; open source</div>
+    </div>
+  </main>
+  <footer><a href="https://github.com/yoavf/continuo">GitHub</a> · App by <a href="https://x.com/yoavf">@yoavf</a></footer>
+  <script async defer src="https://buttons.github.io/buttons.js"></script>
+  <script>
+  (function () {
+    var cars = document.querySelectorAll('.car');
+    var paintCar = document.querySelector('.carlayer.paint .car');
+    var sketchCar = document.querySelector('.carlayer.sketch .car');
+    if (!cars.length || !paintCar || !sketchCar) return;
+
+    // A vehicle = a painted silhouette + its line-sketch twin. Same viewBox
+    // height and wheel line (cy 34) and the same px-per-unit scale, so every
+    // vehicle sits identically on the deck. Widths keep that scale (~0.64).
+    var VEHICLES = [
+      { // coupe
+        w: 56,
+        paint: '<svg viewBox="0 0 88 42"><ellipse cx="82" cy="27" rx="12" ry="7" fill="#ffc571" opacity="0.75"/><path d="M5,34 C5,29 6,27 10,26 C12,21 16,18 22,18 C27,12 35,10 45,10 C54,10 60,13 64,19 C71,19 77,20 81,25 C84,27 84,32 81,34 Z" fill="#241708"/><path d="M27,17 C30,13 35,12 44,12 C50,12 54,13 57,17 Z" fill="#9a5f2b" opacity="0.55"/><circle cx="25" cy="34" r="7.5" fill="#181009"/><circle cx="64" cy="34" r="7.5" fill="#181009"/><circle cx="25" cy="34" r="2.8" fill="#5a4022"/><circle cx="64" cy="34" r="2.8" fill="#5a4022"/><circle cx="82" cy="27" r="2.3" fill="#fff2d8"/></svg>',
+        sketch: '<svg viewBox="0 0 88 42" stroke="#7a3f18" stroke-linejoin="round" stroke-linecap="round"><path d="M5,34 C5,29 6,27 10,26 C12,21 16,18 22,18 C27,12 35,10 45,10 C54,10 60,13 64,19 C71,19 77,20 81,25 C84,27 84,32 81,34 Z" fill="rgba(246,239,224,0.72)" stroke-width="2.2"/><path d="M27,17 C30,13 35,12 44,12 C50,12 54,13 57,17" fill="none" stroke-width="1.6"/><circle cx="25" cy="34" r="7.5" fill="rgba(246,239,224,0.85)" stroke-width="2"/><circle cx="64" cy="34" r="7.5" fill="rgba(246,239,224,0.85)" stroke-width="2"/></svg>'
+      },
+      { // old-school pickup truck
+        w: 62,
+        paint: '<svg viewBox="0 0 98 42"><ellipse cx="92" cy="27" rx="11" ry="6" fill="#ffc571" opacity="0.7"/><path d="M4,34 L4,23 L54,23 L54,13 C54,11 55,10 57,10 L74,10 C77,10 79,11 81,14 L90,22 C93,23 94,24 94,27 L94,31 C94,34 91,34 91,34 Z" fill="#33210f"/><rect x="58" y="13" width="15" height="8" rx="1.5" fill="#9a5f2b" opacity="0.5"/><circle cx="24" cy="34" r="7.5" fill="#161009"/><circle cx="78" cy="34" r="7.5" fill="#161009"/><circle cx="24" cy="34" r="2.7" fill="#5a4022"/><circle cx="78" cy="34" r="2.7" fill="#5a4022"/><circle cx="92" cy="27" r="2.2" fill="#fff2d8"/></svg>',
+        sketch: '<svg viewBox="0 0 98 42" stroke="#7a3f18" stroke-linejoin="round" stroke-linecap="round"><path d="M4,34 L4,23 L54,23 L54,13 C54,11 55,10 57,10 L74,10 C77,10 79,11 81,14 L90,22 C93,23 94,24 94,27 L94,31 C94,34 91,34 91,34 Z" fill="rgba(246,239,224,0.72)" stroke-width="2.2"/><path d="M58,21 L58,13 L73,13 L73,21" fill="none" stroke-width="1.5"/><circle cx="24" cy="34" r="7.5" fill="rgba(246,239,224,0.85)" stroke-width="2"/><circle cx="78" cy="34" r="7.5" fill="rgba(246,239,224,0.85)" stroke-width="2"/></svg>'
+      },
+      { // rounded van / bus
+        w: 59,
+        paint: '<svg viewBox="0 0 92 42"><ellipse cx="86" cy="27" rx="10" ry="6" fill="#ffc571" opacity="0.7"/><path d="M5,34 L5,15 C5,12 7,10 11,10 L66,10 C76,10 82,15 87,23 C89,25 89,27 89,29 L89,31 C89,34 86,34 86,34 Z" fill="#1c1a22"/><rect x="14" y="14" width="18" height="9" rx="1.5" fill="#9a7a4a" opacity="0.5"/><rect x="36" y="14" width="16" height="9" rx="1.5" fill="#9a7a4a" opacity="0.5"/><circle cx="26" cy="34" r="7.5" fill="#141014"/><circle cx="70" cy="34" r="7.5" fill="#141014"/><circle cx="26" cy="34" r="2.7" fill="#4a4652"/><circle cx="70" cy="34" r="2.7" fill="#4a4652"/><circle cx="86" cy="27" r="2.2" fill="#fff2d8"/></svg>',
+        sketch: '<svg viewBox="0 0 92 42" stroke="#7a3f18" stroke-linejoin="round" stroke-linecap="round"><path d="M5,34 L5,15 C5,12 7,10 11,10 L66,10 C76,10 82,15 87,23 C89,25 89,27 89,29 L89,31 C89,34 86,34 86,34 Z" fill="rgba(246,239,224,0.72)" stroke-width="2.2"/><rect x="14" y="14" width="18" height="9" rx="1.5" fill="none" stroke-width="1.5"/><rect x="36" y="14" width="16" height="9" rx="1.5" fill="none" stroke-width="1.5"/><circle cx="26" cy="34" r="7.5" fill="rgba(246,239,224,0.85)" stroke-width="2"/><circle cx="70" cy="34" r="7.5" fill="rgba(246,239,224,0.85)" stroke-width="2"/></svg>'
+      }
+    ];
+    function setVehicle(i) {
+      var v = VEHICLES[i];
+      paintCar.innerHTML = v.paint; sketchCar.innerHTML = v.sketch;
+      paintCar.style.width = sketchCar.style.width = v.w + 'px';
+    }
+
+    // Bridge geometry in the poster's OWN image coordinates (fractions 0..1),
+    // so the car tracks the deck no matter how object-fit:cover crops on resize.
+    var IMG_W = 1024, IMG_H = 1536, POSX = 0.5, POSY = 0.60;
+    var Lx = 0.13, Rx = 0.93, Dy = 0.670;   // deep in painted mountain / farthest into sketch side / deck height
+    var SPEED = 0.00011;       // progress per ms → one crossing ≈ 9s
+    var MIN_WAIT = 7500;       // don't cycle: at least this long between rounds
+    var INITIAL_DELAY = 1200;  // small pause before the very first crossing
+
+    var now = function () { return performance.now(); };   // one clock for everything
+    var p = 0, prev = 0, phase = 'wait', nextAt = now() + INITIAL_DELAY, lastActivity = 0, first = true;
+    ['mousemove', 'keydown', 'pointerdown', 'wheel', 'touchstart'].forEach(function (ev) {
+      window.addEventListener(ev, function () { lastActivity = now(); }, { passive: true });
+    });
+
+    function geom() {
+      var Wv = window.innerWidth, Hv = window.innerHeight;
+      var s = Math.max(Wv / IMG_W, Hv / IMG_H);
+      var Wis = IMG_W * s, His = IMG_H * s;
+      var offX = (Wv - Wis) * POSX, offY = (Hv - His) * POSY;
+      return { lx: Wv - (offX + Lx * Wis), rx: Wv - (offX + Rx * Wis), y: offY + Dy * His };
+    }
+    function render(x, y, op) {
+      var tf = 'translate(' + x.toFixed(1) + 'px,' + y.toFixed(1) + 'px) translateY(-50%)';
+      for (var i = 0; i < cars.length; i++) { cars[i].style.transform = tf; cars[i].style.opacity = op; }
+    }
+    function step() {
+      var t = now(), dt = prev ? Math.min(t - prev, 50) : 16; prev = t;
+      var g = geom(), startX = g.rx, span = g.lx - g.rx;   // sketch (left) → painted (right)
+      if (phase === 'wait') {
+        render(startX, g.y, 0);
+        // first round: just wait out the delay; later rounds also require the visitor to have moved
+        if (t >= nextAt && (first || lastActivity >= nextAt - MIN_WAIT)) {
+          setVehicle(Math.floor(Math.random() * VEHICLES.length));
+          phase = 'run'; p = 0; first = false;
+        }
+        requestAnimationFrame(step); return;
+      }
+      p += SPEED * dt;
+      if (p >= 1) { phase = 'wait'; nextAt = t + MIN_WAIT; render(startX, g.y, 0); requestAnimationFrame(step); return; }
+      var op = p < 0.05 ? p / 0.05 : (p > 0.90 ? Math.max(0, (1 - p) / 0.10) : 1);
+      render(startX + p * span, g.y, op);
+      requestAnimationFrame(step);
+    }
+    requestAnimationFrame(step);
+  })();
+  </script>
 </body>
 </html>
