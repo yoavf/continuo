@@ -1,6 +1,9 @@
 # Releasing
 
-CI runs on every push/PR (`swift test` + an unsigned package). Pushing a
+CI runs on every push/PR (`swift test`, an unsigned package, and a launch
+smoke test — `Scripts/smoke-test.sh` hides `.build` and launches the packaged
+app to prove it's self-contained, catching resource-bundle regressions that a
+signature check alone misses). Pushing a
 `vX.Y.Z` tag triggers `.github/workflows/release.yml`, which signs the app with
 your Developer ID, notarizes it with Apple, staples the ticket, and publishes a
 `Continuo.dmg` to a GitHub release. Locally: `./Scripts/package-app.sh` then

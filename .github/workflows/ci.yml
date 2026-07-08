@@ -28,6 +28,9 @@ jobs:
       - name: Package (unsigned)
         run: ./Scripts/package-app.sh
 
+      - name: Launch smoke test
+        run: ./Scripts/smoke-test.sh
+
       - name: Upload unsigned app
         uses: actions/upload-artifact@v4
         with:
