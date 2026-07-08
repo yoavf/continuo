@@ -50,28 +50,7 @@ The CLI keeps the bulk `sync-once`/`scan` commands for testing the conversion pi
 
 Per-model context limits come from [models.dev](https://models.dev) (MIT licensed): a snapshot is bundled at build time (`Scripts/update-model-catalog.sh` refreshes it) and the app re-fetches weekly at runtime, falling back to the bundled data offline. Transfer budgets derive from the target model's real input limit.
 
-## Releasing
-
-CI runs on every push/PR (`swift test` + an unsigned package). Pushing a
-`vX.Y.Z` tag triggers `.github/workflows/release.yml`, which signs the app with
-your Developer ID, notarizes it with Apple, staples the ticket, and publishes a
-`Continuo.dmg` to a GitHub release. Locally: `./Scripts/package-app.sh` then
-`./Scripts/sign-and-notarize.sh` (needs the same env vars as the CI secrets).
-
-Developer ID distribution needs no App ID registration or provisioning profile —
-only a certificate and a notarization key. Add these repository secrets
-(Settings → Secrets and variables → Actions):
-
-| Secret | What it is | How to get it |
-| --- | --- | --- |
-| `DEVELOPER_ID_CERT_P12_BASE64` | Your "Developer ID Application" cert + key | Create it in Xcode → Settings → Accounts → Manage Certificates → **+ Developer ID Application**, then export from Keychain Access as a `.p12` with a password. Encode: `base64 -i cert.p12 \| pbcopy` |
-| `DEVELOPER_ID_CERT_PASSWORD` | The `.p12` export password | You chose it during export |
-| `AC_API_KEY_ID` | App Store Connect API **Key ID** | App Store Connect → Users and Access → Integrations → App Store Connect API → generate a key (Developer access) |
-| `AC_API_ISSUER_ID` | The **Issuer ID** on that same page | — |
-| `AC_API_KEY_P8_BASE64` | The `AuthKey_XXXX.p8` (downloadable once) | `base64 -i AuthKey_XXXX.p8 \| pbcopy` |
-
-The signing identity and team are read from the imported certificate — no team
-ID needs to be configured separately.
+Building signed, notarized release DMGs in CI is documented in [docs/RELEASING.md](docs/RELEASING.md).
 
 ## License
 
