@@ -1,0 +1,166 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Continuo — continue a coding-agent session in a different agent</title>
+<meta name="description" content="A macOS menu-bar app that continues a Claude Code, Codex, or OpenCode session in a different agent — any direction, on demand.">
+<meta property="og:title" content="Continuo">
+<meta property="og:description" content="Continue a coding-agent session in a different agent — Claude Code, Codex, or OpenCode, any direction.">
+<meta property="og:image" content="poster.png">
+<meta property="og:type" content="website">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><circle cx='50' cy='50' r='42' fill='%23ff6b35'/></svg>">
+<style>
+  :root {
+    --ink: #17181a;
+    --ink-soft: #66686d;
+    --accent: #17181a;
+    --line: rgba(20,22,26,0.12);
+    --warm: #b8501f;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html { -webkit-text-size-adjust: 100%; }
+  body {
+    font-family: "Iowan Old Style", Palatino, Georgia, serif;
+    color: var(--ink);
+    background: #f7f7f6;
+    -webkit-font-smoothing: antialiased;
+  }
+  .wrap { max-width: 1000px; margin: 0 auto; padding: 0 28px; }
+
+  /* Hero */
+  .hero {
+    min-height: 100vh;
+    display: grid;
+    grid-template-columns: minmax(230px, 330px) 1fr;
+    gap: 60px;
+    align-items: center;
+  }
+  .poster {
+    width: 100%;
+    border-radius: 12px;
+    box-shadow: 0 24px 64px rgba(30,20,10,0.22);
+    display: block;
+  }
+  .lede h1 {
+    font-size: clamp(30px, 4.2vw, 46px);
+    font-weight: 600;
+    line-height: 1.12;
+    letter-spacing: -0.01em;
+    margin-bottom: 18px;
+  }
+  .lede .sub {
+    font-family: ui-sans-serif, -apple-system, "Helvetica Neue", sans-serif;
+    font-size: 17px;
+    line-height: 1.5;
+    color: #4c4e52;
+    max-width: 460px;
+    margin-bottom: 28px;
+  }
+  .btn {
+    display: inline-block;
+    background: var(--accent);
+    color: #fff;
+    font-family: ui-sans-serif, -apple-system, sans-serif;
+    font-size: 17px; font-weight: 600;
+    text-decoration: none;
+    padding: 13px 28px;
+    border-radius: 11px;
+    box-shadow: 0 6px 18px rgba(20,22,26,0.22);
+    transition: transform .12s ease, box-shadow .12s ease;
+  }
+  .btn:hover { transform: translateY(-2px); box-shadow: 0 10px 24px rgba(20,22,26,0.3); }
+  .meta {
+    font-family: ui-sans-serif, -apple-system, sans-serif;
+    font-size: 13px; color: var(--ink-soft); margin-top: 11px;
+  }
+  .brew {
+    display: inline-block; margin-top: 18px;
+    background: #ececea;
+    border: 1px solid var(--line);
+    border-radius: 9px;
+    padding: 8px 13px;
+    font-family: ui-monospace, "SF Mono", Menlo, monospace;
+    font-size: 13px; color: var(--ink);
+    user-select: all;
+  }
+  .links {
+    font-family: ui-sans-serif, -apple-system, sans-serif;
+    font-size: 14px; margin-top: 20px;
+  }
+  .links a { color: var(--ink); text-decoration: none; font-weight: 600; border-bottom: 1.5px solid var(--line); }
+  .links a:hover { border-bottom-color: var(--ink); }
+
+  /* Real handoff strip */
+  .story { padding: 20px 0 84px; }
+  .story h2 {
+    font-family: ui-sans-serif, -apple-system, sans-serif;
+    text-align: center; font-size: 15px; font-weight: 600;
+    letter-spacing: 0.02em; color: var(--ink-soft);
+    text-transform: uppercase; margin-bottom: 28px;
+  }
+  .flow {
+    display: flex; align-items: center; justify-content: center;
+    gap: 22px; flex-wrap: wrap;
+  }
+  .shot { max-width: 380px; width: 100%; border-radius: 10px; box-shadow: 0 14px 40px rgba(30,20,10,0.18); }
+  .connector { text-align: center; font-family: ui-sans-serif, sans-serif; }
+  .mark {
+    width: 46px; height: 46px; border-radius: 13px; margin: 0 auto 6px;
+    background: var(--warm); color: #fff;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 24px; box-shadow: 0 8px 20px rgba(184,80,31,0.35);
+  }
+  .connector .lbl { font-size: 13px; font-weight: 700; color: var(--ink); }
+  .connector .via { font-size: 12px; color: var(--ink-soft); }
+
+  footer {
+    text-align: center; padding: 22px;
+    font-family: ui-sans-serif, -apple-system, sans-serif;
+    font-size: 12.5px; color: var(--ink-soft);
+    border-top: 1px solid var(--line);
+  }
+  footer a { color: var(--ink-soft); }
+
+  @media (max-width: 720px) {
+    .hero { grid-template-columns: 1fr; gap: 32px; padding: 56px 0 40px; text-align: center; min-height: auto; }
+    .poster { max-width: 260px; margin: 0 auto; }
+    .lede .sub, .brew { margin-left: auto; margin-right: auto; }
+    .mark { transform: rotate(90deg); }
+  }
+</style>
+</head>
+<body>
+  <div class="wrap">
+    <section class="hero">
+      <img class="poster" src="poster.png" alt="Continuo — vintage travel-poster artwork of a bridge over a canyon at sunset">
+      <div class="lede">
+        <h1>Continue a coding-agent session in a different agent.</h1>
+        <p class="sub">Claude&nbsp;Code, Codex, and OpenCode — any direction, on demand, from your menu bar. Continuo converts one session into another agent's native format and opens it, already resumed.</p>
+        <a class="btn" href="https://github.com/yoavf/continuo/releases/latest/download/Continuo.dmg">Download for macOS</a>
+        <div class="meta">Free &amp; open source · Apple silicon · macOS 14+ · signed &amp; notarized</div>
+        <div class="brew">brew install --cask yoavf/tap/continuo</div>
+        <div class="links"><a href="https://github.com/yoavf/continuo">View source on GitHub ↗</a></div>
+      </div>
+    </section>
+
+    <!-- Real-handoff story strip — enabled once story-claude.png / story-codex.png exist.
+    <section class="story">
+      <h2>Hit a limit in one? Pick up in another.</h2>
+      <div class="flow">
+        <img class="shot" src="story-claude.png" alt="A Claude Code session that has reached its usage limit">
+        <div class="connector">
+          <div class="mark">⇄</div>
+          <div class="lbl">Continuo</div>
+          <div class="via">Continue in Codex →</div>
+        </div>
+        <img class="shot" src="story-codex.png" alt="The same session resumed in Codex">
+      </div>
+    </section>
+    -->
+  </div>
+  <footer>
+    MIT licensed · Model context data from <a href="https://models.dev">models.dev</a>
+  </footer>
+</body>
+</html>

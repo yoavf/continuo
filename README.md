@@ -10,7 +10,11 @@ Switched tools mid-task? Hitting a model's limits? Want a fresh agent with the s
 
 ## Install
 
-Download the latest `Continuo.dmg` from [Releases](https://github.com/yoavf/continuo/releases), drag it to Applications, and launch it — it's signed and notarized.
+```sh
+brew install --cask yoavf/tap/continuo
+```
+
+Or download the latest `Continuo.dmg` from [Releases](https://github.com/yoavf/continuo/releases), drag it to Applications, and launch it — it's signed and notarized.
 
 Recent sessions from `~/.claude` and `~/.codex` show up automatically. Click the menu-bar icon, or press `⌥⌘S` from anywhere, to see them.
 
