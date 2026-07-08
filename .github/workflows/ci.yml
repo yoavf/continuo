@@ -12,7 +12,7 @@ concurrency:
 
 jobs:
   build-test:
-    runs-on: macos-26
+    runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4
 
