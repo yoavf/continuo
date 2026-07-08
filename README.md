@@ -23,11 +23,32 @@ Settings lets you point at custom homes, pick target models per direction, choos
 
 Native session files are read-only inputs. Continuo only ever writes its own mirror files, tracked in `bridge-state.json`; it refuses to overwrite anything it doesn't own, and never rewrites a mirror you've since continued natively (it makes a fresh one instead). Nothing runs in the background — sessions are converted only when you ask.
 
-Converting a transcript means translating each tool call into the target agent's vocabulary (Claude's `Bash` ⇄ Codex's `exec_command`, and so on) so transplanted history reads naturally. Model matching is conservative: the source model is preserved in metadata, and the converted session gets a target-provider model from built-in family matches or your Settings defaults. Hidden provider reasoning is never carried across — only the visible conversation, tool summaries, and safe metadata.
+Converting a transcript means translating each tool call into the target agent's vocabulary (Claude's `Bash` ⇄ Codex's `exec_command`, and so on) so transplanted history reads naturally. Model matching is conservative: the source model is preserved in metadata, and the converted session gets a target-provider model from built-in family matches or your Settings defaults. Hidden provider reasoning is never carried across&nbsp;\* — only the visible conversation, tool summaries, and safe metadata.
+
+When a session's title is just a raw prompt, and when it builds a handoff brief, Continuo uses your Mac's on-device model (Apple Intelligence, where available) to write a clean title or a custom compaction of the conversation. Nothing about your sessions is sent anywhere — the on-device model runs locally, and everything else is plain file conversion.
+
+> \* The latest OpenAI and Anthropic reasoning models return their chain-of-thought as encrypted, provider-owned tokens that never appear in the readable transcript and can't be replayed into another provider. That reasoning is necessarily left behind when you continue a session elsewhere.
+
+**What carries over**
+
+- Your prompts and the agent's replies, in full
+- Tool calls — name, input, and output — remapped to the target agent's equivalent operation
+- Timestamps and session metadata: model, working directory, title
+
+**What stays behind**
+
+- Provider reasoning and thinking traces (encrypted and provider-owned — see above)
+- Token counts and billing/usage data
+- System prompts and other injected context (the target agent supplies its own)
+- Raw file-history snapshots
 
 OpenCode sessions are read from its `opencode.db` and written through the official `opencode import` command; models cross in with their provider prefix (`anthropic/claude-…`, `openai/gpt-…`) and cross out by stripping it.
 
-Transfer budgets come from each model's real context limit, sourced from [models.dev](https://models.dev) (MIT licensed): a snapshot is bundled at build time and refreshed weekly at runtime, falling back to the bundle when offline.
+Transfer budgets come from each model's real context limit, sourced from [models.dev](https://models.dev): a snapshot is bundled at build time and refreshed weekly at runtime, falling back to the bundle when offline.
+
+## Similar tools
+
+- [session-porter](https://github.com/liwala/session-porter) — a CLI for porting agent sessions between tools, if you'd rather work from the command line.
 
 ## Build
 
