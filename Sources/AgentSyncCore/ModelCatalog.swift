@@ -26,7 +26,8 @@ public enum ModelCatalog {
             lock.unlock()
             return
         }
-        if let bundled = Bundle.module.url(forResource: "model-contexts", withExtension: "json"),
+        let bundle = continuoResourceBundle("agent-sync_AgentSyncCore", fallback: .module)
+        if let bundled = bundle.url(forResource: "model-contexts", withExtension: "json"),
            let data = try? Data(contentsOf: bundled),
            let map = try? JSONDecoder().decode([String: Int].self, from: data) {
             lock.lock()

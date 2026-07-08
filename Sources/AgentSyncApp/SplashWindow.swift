@@ -1,3 +1,4 @@
+import AgentSyncCore
 import AppKit
 import SwiftUI
 
@@ -8,8 +9,9 @@ enum SplashWindow {
     private static var window: NSWindow?
 
     static func show() {
+        let bundle = continuoResourceBundle("agent-sync_AgentSyncApp", fallback: .module)
         let candidates = ["splash-1", "splash-2"].compactMap {
-            Bundle.module.url(forResource: $0, withExtension: "png")
+            bundle.url(forResource: $0, withExtension: "png")
         }
         guard let url = candidates.randomElement(), let image = NSImage(contentsOf: url) else {
             return
