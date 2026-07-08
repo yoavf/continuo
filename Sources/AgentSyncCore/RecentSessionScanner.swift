@@ -17,6 +17,28 @@ public struct SessionPreview: Identifiable, Equatable, Sendable {
     public var cwd: String
     public var updatedAt: Date
 
+    public init(
+        provider: AgentKind,
+        sessionID: String,
+        path: String,
+        title: String,
+        snippet: String,
+        models: [String],
+        estimatedTokens: Int,
+        cwd: String,
+        updatedAt: Date
+    ) {
+        self.provider = provider
+        self.sessionID = sessionID
+        self.path = path
+        self.title = title
+        self.snippet = snippet
+        self.models = models
+        self.estimatedTokens = estimatedTokens
+        self.cwd = cwd
+        self.updatedAt = updatedAt
+    }
+
     public var tokensLabel: String {
         switch estimatedTokens {
         case ..<1_000:

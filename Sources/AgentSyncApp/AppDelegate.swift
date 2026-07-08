@@ -18,6 +18,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private let model = AppModel.shared
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        if let shotsDir = ProcessInfo.processInfo.environment["CONTINUO_SHOTS"] {
+            Screenshots.generate(into: URL(fileURLWithPath: shotsDir, isDirectory: true))
+            return
+        }
         Self.instance = self
         SplashWindow.show()
 

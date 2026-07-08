@@ -4,6 +4,10 @@ Continue a coding-agent session in a *different* agent. Continuo is a macOS menu
 
 Switched tools mid-task? Hitting a model's limits? Want a fresh agent with the same context? Open the picker, pick a session, click the agent you want to continue in.
 
+<p align="center">
+  <img src="docs/screenshots/picker.png" width="480" alt="The Continuo menu-bar picker listing recent sessions across Claude Code, Codex, and OpenCode">
+</p>
+
 ## Install
 
 Download the latest `Continuo.dmg` from [Releases](https://github.com/yoavf/continuo/releases), drag it to Applications, and launch it — it's signed and notarized.
@@ -17,7 +21,15 @@ Recent sessions from `~/.claude` and `~/.codex` show up automatically. Click the
 - **Choose how much to carry over** — the full transcript when it fits the target model's context, or a handoff brief (a structured summary plus your most recent exchanges) when it wouldn't.
 - **It opens resumed.** Continuo writes the target's native session file and launches your terminal straight into it.
 
+<p align="center">
+  <img src="docs/screenshots/continue.png" width="440" alt="The continue panel: choose which agent to continue in and how much history to carry over">
+</p>
+
 Settings lets you point at custom homes, pick target models per direction, choose your terminal, and toggle the hotkey.
+
+<p align="center">
+  <img src="docs/screenshots/settings.png" width="520" alt="Continuo settings: hotkey, terminal, and agent home locations">
+</p>
 
 ## How it works
 

@@ -280,8 +280,17 @@ final class AppModel: ObservableObject {
     private var activationObserver: NSObjectProtocol?
     private var titleCache: [String: String] = [:]
     private var titleGenerationInFlight: Set<String> = []
+    private let isDemo: Bool
+
+    /// Demo instance for README screenshots: no scanning, timers, or hotkey, so
+    /// injected `sessions` are never overwritten by a real session scan (which
+    /// `SessionPickerView.onAppear` would otherwise trigger).
+    init(demo: Bool) {
+        isDemo = true
+    }
 
     init() {
+        isDemo = false
         refreshTimer = Timer.scheduledTimer(withTimeInterval: 60, repeats: true) { [weak self] _ in
             Task { @MainActor in
                 self?.refresh()
@@ -338,6 +347,9 @@ final class AppModel: ObservableObject {
     }
 
     func refresh() {
+        guard !isDemo else {
+            return
+        }
         guard !isRefreshing, launchingID == nil else {
             return
         }
