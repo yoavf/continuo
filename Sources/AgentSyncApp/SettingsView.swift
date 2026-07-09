@@ -33,9 +33,11 @@ private struct GeneralSettingsTab: View {
     @AppStorage(Prefs.stateDirectoryKey) private var stateDirectoryPath = Prefs.stateDirectoryPath
 
     @AppStorage(Prefs.hotkeyEnabledKey) private var hotkeyEnabled = true
+    @AppStorage(Prefs.supersetV2EnabledKey) private var supersetV2Enabled = false
     @State private var installMessage: String?
     @State private var cmuxStatus = TerminalLauncher.cmuxConnectionStatus
-    @State private var showCMUXInstructions = false
+    @State private var supersetStatus = TerminalLauncher.supersetConnectionStatus
+    @State private var setupInstructionsTerminal: TerminalApp?
 
     var body: some View {
         Form {
@@ -56,17 +58,34 @@ private struct GeneralSettingsTab: View {
                 }
                 .pickerStyle(.menu)
                 if preferredTerminal == TerminalApp.cmux.rawValue {
-                    CMUXStatusRow(status: cmuxStatus) {
-                        showCMUXInstructions = true
+                    IntegrationStatusRow(title: cmuxStatus.title, isReady: cmuxStatus.isReady) {
+                        setupInstructionsTerminal = .cmux
                     } onRefresh: {
                         cmuxStatus = TerminalLauncher.cmuxConnectionStatus
                     }
+                } else if preferredTerminal == TerminalApp.superset.rawValue {
+                    IntegrationStatusRow(
+                        title: supersetStatus.title,
+                        isReady: supersetStatus.isReady
+                    ) {
+                        setupInstructionsTerminal = .superset
+                    } onRefresh: {
+                        supersetStatus = TerminalLauncher.supersetConnectionStatus
+                    }
                 }
             } footer: {
-                if preferredTerminal == TerminalApp.cmux.rawValue, let guidance = cmuxStatus.guidance {
-                    Text(guidance)
+                if preferredTerminal == TerminalApp.cmux.rawValue {
+                    Text(
+                        cmuxStatus.guidance
+                            ?? "CMUX opens resumed sessions as named workspaces."
+                    )
+                } else if preferredTerminal == TerminalApp.superset.rawValue {
+                    Text(
+                        supersetStatus.guidance
+                            ?? "Continuo opens resumed sessions in the matching Superset workspace, creating the project or workspace when needed."
+                    )
                 } else {
-                    Text("Only installed terminals are listed. CMUX opens resumed sessions as named workspaces.")
+                    Text("Only installed terminals are listed.")
                 }
             }
 
@@ -99,15 +118,42 @@ private struct GeneralSettingsTab: View {
         .onChange(of: stateDirectoryPath) { model.refresh() }
         .onChange(of: preferredTerminal) {
             cmuxStatus = TerminalLauncher.cmuxConnectionStatus
+            supersetStatus = TerminalLauncher.supersetConnectionStatus
         }
         .onAppear {
             cmuxStatus = TerminalLauncher.cmuxConnectionStatus
+            supersetStatus = TerminalLauncher.supersetConnectionStatus
         }
-        .alert("Set up CMUX", isPresented: $showCMUXInstructions) {
-            Button("Got it", role: .cancel) {}
-        } message: {
-            Text("Open CMUX yourself, then choose CMUX → Settings → Automation. Select Password access, set a password, and return here to check the connection again.")
+        .alert(item: $setupInstructionsTerminal) { terminal in
+            setupAlert(for: terminal)
         }
+    }
+
+    private func setupAlert(for terminal: TerminalApp) -> Alert {
+        guard terminal == .superset else {
+            return Alert(
+                title: Text("Set up \(terminal.displayName)"),
+                message: Text(terminal.setupInstructions),
+                dismissButton: .cancel(Text("Got it"))
+            )
+        }
+        let message = supersetStatus.guidance ?? terminal.setupInstructions
+        if supersetStatus == .v2Required {
+            return Alert(
+                title: Text(supersetStatus.title),
+                message: Text(message),
+                primaryButton: .default(Text("I enabled Superset v2")) {
+                    supersetV2Enabled = true
+                    supersetStatus = TerminalLauncher.supersetConnectionStatus
+                },
+                secondaryButton: .cancel()
+            )
+        }
+        return Alert(
+            title: Text(supersetStatus.title),
+            message: Text(message),
+            dismissButton: .cancel(Text("Got it"))
+        )
     }
 
     private func installInApplications() -> String {
@@ -134,25 +180,26 @@ private struct GeneralSettingsTab: View {
     }
 }
 
-private struct CMUXStatusRow: View {
-    let status: CMUXConnectionStatus
+private struct IntegrationStatusRow: View {
+    let title: String
+    let isReady: Bool
     let onConfigure: () -> Void
     let onRefresh: () -> Void
 
     var body: some View {
         HStack(spacing: 8) {
-            Label(status.title, systemImage: status.isReady ? "checkmark.circle.fill" : "exclamationmark.circle.fill")
-                .foregroundStyle(status.isReady ? .green : .orange)
+            Label(title, systemImage: isReady ? "checkmark.circle.fill" : "exclamationmark.circle.fill")
+                .foregroundStyle(isReady ? .green : .orange)
             Spacer()
-            if !status.isReady {
-                Button("Setup instructions…", action: onConfigure)
+            if !isReady {
+                Button("Set up…", action: onConfigure)
             }
             Button(action: onRefresh) {
                 Image(systemName: "arrow.clockwise")
             }
             .buttonStyle(.borderless)
-            .help("Check CMUX connection again")
-            .accessibilityLabel("Check CMUX connection again")
+            .help("Check connection again")
+            .accessibilityLabel("Check connection again")
         }
         .font(.callout)
     }

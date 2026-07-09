@@ -7,6 +7,7 @@ enum TerminalApp: String, CaseIterable, Identifiable {
     case iterm
     case ghostty
     case cmux
+    case superset
 
     var id: String { rawValue }
 
@@ -16,6 +17,7 @@ enum TerminalApp: String, CaseIterable, Identifiable {
         case .iterm: return "iTerm2"
         case .ghostty: return "Ghostty"
         case .cmux: return "CMUX"
+        case .superset: return "Superset"
         }
     }
 
@@ -25,6 +27,18 @@ enum TerminalApp: String, CaseIterable, Identifiable {
         case .iterm: return "com.googlecode.iterm2"
         case .ghostty: return "com.mitchellh.ghostty"
         case .cmux: return "com.cmuxterm.app"
+        case .superset: return "com.superset.desktop"
+        }
+    }
+
+    var setupInstructions: String {
+        switch self {
+        case .cmux:
+            return "Open CMUX yourself, then choose CMUX → Settings → Automation. Select Password access and set a password before trying again."
+        case .superset:
+            return "Open Superset and turn on Settings → Experimental → Try Superset v2. Then run ~/.superset/bin/superset auth login in Terminal and return to Continuo."
+        case .terminal, .iterm, .ghostty:
+            return "Open the terminal once, then try again."
         }
     }
 
@@ -43,6 +57,7 @@ enum TerminalLaunchError: LocalizedError {
     case launchFailed(String, Int32, String)
     case notInstalled(String)
     case cmuxSetupRequired(CMUXConnectionStatus)
+    case supersetSetupRequired(String)
 
     var errorDescription: String? {
         switch self {
@@ -54,8 +69,39 @@ enum TerminalLaunchError: LocalizedError {
             return "\(terminal) is not installed."
         case .cmuxSetupRequired(let status):
             return status.guidance ?? "CMUX needs setup in Settings → Automation."
+        case .supersetSetupRequired(let detail):
+            return detail
         }
     }
+
+    var setupAlert: TerminalSetupAlert? {
+        switch self {
+        case .cmuxSetupRequired:
+            return TerminalSetupAlert(
+                terminal: .cmux,
+                message: errorDescription ?? TerminalApp.cmux.setupInstructions
+            )
+        case .supersetSetupRequired:
+            return TerminalSetupAlert(
+                terminal: .superset,
+                message: errorDescription ?? TerminalApp.superset.setupInstructions
+            )
+        case .launchFailed, .notInstalled:
+            return nil
+        }
+    }
+}
+
+struct TerminalSetupAlert: Identifiable {
+    let terminal: TerminalApp
+    let message: String
+
+    var id: String { "\(terminal.rawValue):\(message)" }
+}
+
+enum TerminalLaunchPreparation: Sendable {
+    case standard
+    case superset(workspaceID: String, workingDirectory: String)
 }
 
 enum TerminalLauncher {
@@ -63,25 +109,73 @@ enum TerminalLauncher {
         CMUXIntegration.connectionStatus()
     }
 
-    static func preflight(_ preferred: TerminalApp) throws {
-        guard preferred == .cmux else { return }
-        guard preferred.isInstalled else {
-            throw TerminalLaunchError.notInstalled(preferred.displayName)
+    static var supersetConnectionStatus: SupersetConnectionStatus {
+        SupersetIntegration.connectionStatus()
+    }
+
+    static func preflight(
+        _ preferred: TerminalApp,
+        workingDirectory: String? = nil
+    ) throws -> TerminalLaunchPreparation {
+        switch preferred {
+        case .cmux:
+            guard preferred.isInstalled else {
+                throw TerminalLaunchError.notInstalled(preferred.displayName)
+            }
+            let status = cmuxConnectionStatus
+            guard status.isReady else {
+                throw TerminalLaunchError.cmuxSetupRequired(status)
+            }
+        case .superset:
+            guard preferred.isInstalled else {
+                throw TerminalLaunchError.notInstalled(preferred.displayName)
+            }
+            guard supersetConnectionStatus.isReady else {
+                throw TerminalLaunchError.supersetSetupRequired(
+                    supersetConnectionStatus.guidance ?? preferred.setupInstructions
+                )
+            }
+            guard let workingDirectory else {
+                return .standard
+            }
+            do {
+                let resolution = try SupersetIntegration.workspace(
+                    containing: existingDirectoryOrHome(workingDirectory)
+                )
+                return .superset(
+                    workspaceID: resolution.workspace.id,
+                    workingDirectory: resolution.workingDirectory
+                )
+            } catch {
+                throw TerminalLaunchError.supersetSetupRequired(error.localizedDescription)
+            }
+        case .terminal, .iterm, .ghostty:
+            break
         }
-        let status = cmuxConnectionStatus
-        guard status.isReady else {
-            throw TerminalLaunchError.cmuxSetupRequired(status)
-        }
+        return .standard
     }
 
 }
 
 extension TerminalLauncher {
-    static func launch(_ ticket: ResumeTicket, using preferred: TerminalApp) throws {
+    static func launch(
+        _ ticket: ResumeTicket,
+        using preferred: TerminalApp,
+        preparation suppliedPreparation: TerminalLaunchPreparation? = nil
+    ) throws {
         let terminal = preferred.isInstalled ? preferred : .terminal
-        try preflight(terminal)
         let cwd = existingDirectoryOrHome(ticket.workingDirectory)
-        let command = resumeCommand(for: ticket, cwd: cwd, includeCD: terminal != .cmux)
+        let preparation: TerminalLaunchPreparation
+        if let suppliedPreparation {
+            preparation = suppliedPreparation
+        } else {
+            preparation = try preflight(terminal, workingDirectory: cwd)
+        }
+        let command = resumeCommand(
+            for: ticket,
+            cwd: cwd,
+            includeCD: terminal != .cmux && terminal != .superset
+        )
 
         switch terminal {
         case .terminal:
@@ -112,6 +206,17 @@ extension TerminalLauncher {
             )
         case .cmux:
             try launchCMUX(ticket: ticket, cwd: cwd, command: command)
+        case .superset:
+            guard case let .superset(workspaceID, workingDirectory) = preparation else {
+                throw TerminalLaunchError.supersetSetupRequired(
+                    TerminalApp.superset.setupInstructions
+                )
+            }
+            try launchSuperset(
+                workspaceID: workspaceID,
+                cwd: workingDirectory,
+                command: command
+            )
         }
     }
 
@@ -169,6 +274,29 @@ extension TerminalLauncher {
         } catch {
             client.close()
             throw error
+        }
+    }
+
+    private static func launchSuperset(
+        workspaceID: String,
+        cwd: String,
+        command: String
+    ) throws {
+        do {
+            let terminal = try SupersetIntegration.createTerminal(
+                workspaceID: workspaceID,
+                workingDirectory: cwd,
+                command: command
+            )
+            let url = try SupersetIntegration.terminalURL(
+                workspaceID: workspaceID,
+                terminalID: terminal.terminalId
+            )
+            guard NSWorkspace.shared.open(url) else {
+                throw SupersetIntegrationError.openFailed
+            }
+        } catch {
+            throw TerminalLaunchError.supersetSetupRequired(error.localizedDescription)
         }
     }
 }

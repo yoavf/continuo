@@ -54,13 +54,15 @@ struct SessionPickerView: View {
         .onAppear {
             model.refresh()
         }
-        .alert("CMUX needs setup", isPresented: $model.isCMUXSetupAlertPresented) {
-            Button("Open Continuo Settings") {
-                AppDelegate.openSettings()
-            }
-            Button("Cancel", role: .cancel) {}
-        } message: {
-            Text("Open CMUX yourself, then choose CMUX → Settings → Automation. Select Password access and set a password before trying again.")
+        .alert(item: $model.terminalSetupAlert) { setupAlert in
+            Alert(
+                title: Text("\(setupAlert.terminal.displayName) needs setup"),
+                message: Text(setupAlert.message),
+                primaryButton: .default(Text("Open Continuo Settings")) {
+                    AppDelegate.openSettings()
+                },
+                secondaryButton: .cancel()
+            )
         }
     }
 
