@@ -41,7 +41,6 @@ A session destination can be a conventional terminal or a workspace environment.
 
 - **Terminal, iTerm2, and Ghostty** — open the resumed agent directly in a new terminal session.
 - **CMUX** — create a named workspace and run the resumed agent inside it. One-time password access must be enabled under CMUX → Settings → Automation.
-- **Superset** — reuse or create the matching project and Git-branch workspace, then open the resumed agent inside it. Superset v2 and a one-time CLI sign-in are required.
 
 ## How it works
 

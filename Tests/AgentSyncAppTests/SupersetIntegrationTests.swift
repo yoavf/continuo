@@ -4,6 +4,14 @@ import Testing
 
 @Suite("Superset integration")
 struct SupersetIntegrationTests {
+    @Test("Superset remains hidden while the integration is experimental")
+    func hiddenFromTerminalPicker() {
+        #expect(!TerminalApp.superset.isSelectable)
+        #expect(!TerminalApp.selectableCases.contains(.superset))
+        #expect(Prefs.resolvedTerminalPreference("superset") == .terminal)
+        #expect(Prefs.resolvedTerminalPreference("cmux") == .cmux)
+    }
+
     @Test("Superset setup alerts preserve the actual failure")
     func setupAlertDetail() throws {
         let alert = try #require(

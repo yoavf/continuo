@@ -44,8 +44,25 @@ enum Prefs {
     }
 
     static var preferredTerminal: TerminalApp {
-        UserDefaults.standard.string(forKey: preferredTerminalKey)
-            .flatMap(TerminalApp.init(rawValue:)) ?? .terminal
+        resolvedTerminalPreference(
+            UserDefaults.standard.string(forKey: preferredTerminalKey)
+        )
+    }
+
+    static func resolvedTerminalPreference(_ rawValue: String?) -> TerminalApp {
+        guard let terminal = rawValue.flatMap(TerminalApp.init(rawValue:)),
+              terminal.isSelectable else {
+            return .terminal
+        }
+        return terminal
+    }
+
+    static func normalizeTerminalPreference() {
+        let stored = UserDefaults.standard.string(forKey: preferredTerminalKey)
+        let resolved = resolvedTerminalPreference(stored)
+        if stored != nil, stored != resolved.rawValue {
+            UserDefaults.standard.set(resolved.rawValue, forKey: preferredTerminalKey)
+        }
     }
 
     static var supersetV2Enabled: Bool {
@@ -296,6 +313,7 @@ final class AppModel: ObservableObject {
     }
 
     init() {
+        Prefs.normalizeTerminalPreference()
         isDemo = false
         refreshTimer = Timer.scheduledTimer(withTimeInterval: 60, repeats: true) { [weak self] _ in
             Task { @MainActor in

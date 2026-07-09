@@ -48,8 +48,15 @@ enum TerminalApp: String, CaseIterable, Identifiable {
 
     var isInstalled: Bool { appURL != nil }
 
+    /// Superset support remains implemented but is not ready for users yet.
+    var isSelectable: Bool { self != .superset }
+
+    static var selectableCases: [TerminalApp] {
+        allCases.filter(\.isSelectable)
+    }
+
     static var installed: [TerminalApp] {
-        allCases.filter(\.isInstalled)
+        selectableCases.filter(\.isInstalled)
     }
 }
 
