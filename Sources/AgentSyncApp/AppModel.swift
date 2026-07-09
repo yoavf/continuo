@@ -13,6 +13,7 @@ enum Prefs {
     static let codexTargetModelKey = "codexTargetModel"
     static let claudeTargetModelKey = "claudeTargetModel"
     static let preferredTerminalKey = "preferredTerminal"
+    static let supersetV2EnabledKey = "supersetV2Enabled"
 
     static var production: AgentSyncConfiguration {
         AgentSyncConfiguration.productionDefault()
@@ -45,6 +46,10 @@ enum Prefs {
     static var preferredTerminal: TerminalApp {
         UserDefaults.standard.string(forKey: preferredTerminalKey)
             .flatMap(TerminalApp.init(rawValue:)) ?? .terminal
+    }
+
+    static var supersetV2Enabled: Bool {
+        UserDefaults.standard.bool(forKey: supersetV2EnabledKey)
     }
 
     /// The split button's primary action: the target last used for sessions of
@@ -274,7 +279,7 @@ final class AppModel: ObservableObject {
     @Published var status: AppStatus = .idle
     @Published var isRefreshing = false
     @Published var launchingID: String?
-    @Published var isCMUXSetupAlertPresented = false
+    @Published var terminalSetupAlert: TerminalSetupAlert?
 
     private var refreshTimer: Timer?
     private var noticeResetTask: Task<Void, Never>?
@@ -453,15 +458,6 @@ final class AppModel: ObservableObject {
             return
         }
         let terminal = Prefs.preferredTerminal
-        do {
-            try TerminalLauncher.preflight(terminal)
-        } catch {
-            setStatus(.error(shortErrorText(error)))
-            if case TerminalLaunchError.cmuxSetupRequired = error {
-                isCMUXSetupAlertPresented = true
-            }
-            return
-        }
         launchingID = item.id
         setStatus(.working("Preparing \(target.displayName) session…"))
         Prefs.setPrimaryTarget(target, for: item.preview.provider)
@@ -469,6 +465,10 @@ final class AppModel: ObservableObject {
 
         Task.detached(priority: .userInitiated) {
             let result = Result {
+                let preparation = try TerminalLauncher.preflight(
+                    terminal,
+                    workingDirectory: item.preview.cwd
+                )
                 let engine = SyncEngine(configuration: configuration)
                 engine.handoffSummarizer = Intelligence.handoffSummary
                 let ticket = try engine.prepareResume(
@@ -477,7 +477,11 @@ final class AppModel: ObservableObject {
                     target: target,
                     mode: mode
                 )
-                try TerminalLauncher.launch(ticket, using: terminal)
+                try TerminalLauncher.launch(
+                    ticket,
+                    using: terminal,
+                    preparation: preparation
+                )
                 return ticket
             }
             await MainActor.run {
@@ -489,6 +493,10 @@ final class AppModel: ObservableObject {
                     self.setStatus(.notice(text), autoClear: true)
                 case .failure(let error):
                     self.setStatus(.error(shortErrorText(error)))
+                    if let launchError = error as? TerminalLaunchError,
+                       let setupAlert = launchError.setupAlert {
+                        self.terminalSetupAlert = setupAlert
+                    }
                 }
                 self.launchingID = nil
                 self.refresh()
