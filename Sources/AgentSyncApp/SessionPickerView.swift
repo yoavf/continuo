@@ -54,6 +54,14 @@ struct SessionPickerView: View {
         .onAppear {
             model.refresh()
         }
+        .alert("CMUX needs setup", isPresented: $model.isCMUXSetupAlertPresented) {
+            Button("Open Continuo Settings") {
+                AppDelegate.openSettings()
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("Open CMUX yourself, then choose CMUX → Settings → Automation. Select Password access and set a password before trying again.")
+        }
     }
 
     private var header: some View {

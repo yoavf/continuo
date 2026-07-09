@@ -34,6 +34,10 @@ let package = Package(
             name: "AgentSyncCoreTests",
             dependencies: ["AgentSyncCore"]
         ),
+        .testTarget(
+            name: "AgentSyncAppTests",
+            dependencies: ["AgentSyncApp"]
+        ),
     ],
     swiftLanguageModes: [.v6]
 )

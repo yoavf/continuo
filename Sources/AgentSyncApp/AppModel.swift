@@ -274,6 +274,7 @@ final class AppModel: ObservableObject {
     @Published var status: AppStatus = .idle
     @Published var isRefreshing = false
     @Published var launchingID: String?
+    @Published var isCMUXSetupAlertPresented = false
 
     private var refreshTimer: Timer?
     private var noticeResetTask: Task<Void, Never>?
@@ -451,11 +452,20 @@ final class AppModel: ObservableObject {
         guard launchingID == nil, target != item.preview.provider else {
             return
         }
+        let terminal = Prefs.preferredTerminal
+        do {
+            try TerminalLauncher.preflight(terminal)
+        } catch {
+            setStatus(.error(shortErrorText(error)))
+            if case TerminalLaunchError.cmuxSetupRequired = error {
+                isCMUXSetupAlertPresented = true
+            }
+            return
+        }
         launchingID = item.id
         setStatus(.working("Preparing \(target.displayName) session…"))
         Prefs.setPrimaryTarget(target, for: item.preview.provider)
         let configuration = Prefs.configuration()
-        let terminal = Prefs.preferredTerminal
 
         Task.detached(priority: .userInitiated) {
             let result = Result {

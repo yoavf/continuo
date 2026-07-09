@@ -34,6 +34,8 @@ private struct GeneralSettingsTab: View {
 
     @AppStorage(Prefs.hotkeyEnabledKey) private var hotkeyEnabled = true
     @State private var installMessage: String?
+    @State private var cmuxStatus = TerminalLauncher.cmuxConnectionStatus
+    @State private var showCMUXInstructions = false
 
     var body: some View {
         Form {
@@ -53,8 +55,19 @@ private struct GeneralSettingsTab: View {
                     }
                 }
                 .pickerStyle(.menu)
+                if preferredTerminal == TerminalApp.cmux.rawValue {
+                    CMUXStatusRow(status: cmuxStatus) {
+                        showCMUXInstructions = true
+                    } onRefresh: {
+                        cmuxStatus = TerminalLauncher.cmuxConnectionStatus
+                    }
+                }
             } footer: {
-                Text("Only installed terminals are listed. CMUX opens resumed sessions as named workspaces.")
+                if preferredTerminal == TerminalApp.cmux.rawValue, let guidance = cmuxStatus.guidance {
+                    Text(guidance)
+                } else {
+                    Text("Only installed terminals are listed. CMUX opens resumed sessions as named workspaces.")
+                }
             }
 
             Section {
@@ -84,6 +97,17 @@ private struct GeneralSettingsTab: View {
         .onChange(of: codexHomePath) { model.refresh() }
         .onChange(of: opencodeHomePath) { model.refresh() }
         .onChange(of: stateDirectoryPath) { model.refresh() }
+        .onChange(of: preferredTerminal) {
+            cmuxStatus = TerminalLauncher.cmuxConnectionStatus
+        }
+        .onAppear {
+            cmuxStatus = TerminalLauncher.cmuxConnectionStatus
+        }
+        .alert("Set up CMUX", isPresented: $showCMUXInstructions) {
+            Button("Got it", role: .cancel) {}
+        } message: {
+            Text("Open CMUX yourself, then choose CMUX → Settings → Automation. Select Password access, set a password, and return here to check the connection again.")
+        }
     }
 
     private func installInApplications() -> String {
@@ -107,6 +131,30 @@ private struct GeneralSettingsTab: View {
         } catch {
             return "Install failed: \(error.localizedDescription)"
         }
+    }
+}
+
+private struct CMUXStatusRow: View {
+    let status: CMUXConnectionStatus
+    let onConfigure: () -> Void
+    let onRefresh: () -> Void
+
+    var body: some View {
+        HStack(spacing: 8) {
+            Label(status.title, systemImage: status.isReady ? "checkmark.circle.fill" : "exclamationmark.circle.fill")
+                .foregroundStyle(status.isReady ? .green : .orange)
+            Spacer()
+            if !status.isReady {
+                Button("Setup instructions…", action: onConfigure)
+            }
+            Button(action: onRefresh) {
+                Image(systemName: "arrow.clockwise")
+            }
+            .buttonStyle(.borderless)
+            .help("Check CMUX connection again")
+            .accessibilityLabel("Check CMUX connection again")
+        }
+        .font(.callout)
     }
 }
 
