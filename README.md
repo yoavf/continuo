@@ -1,6 +1,6 @@
 # Continuo
 
-Continue a coding-agent session in a *different* agent. Continuo is a macOS menu-bar app that converts a recent Claude Code, Codex, or OpenCode session into another agent's native format and opens a terminal already resumed into it — in any direction, on demand.
+Continue a coding-agent session in a *different* agent. Continuo is a macOS menu-bar app that converts a recent Claude Code, Codex, or OpenCode session into another agent's native format and opens it already resumed in your chosen session destination — in any direction, on demand.
 
 Switched tools mid-task? Hitting a model's limits? Want a fresh agent with the same context? Open the picker, pick a session, click the agent you want to continue in.
 
@@ -23,17 +23,25 @@ Recent sessions from `~/.claude` and `~/.codex` show up automatically. Click the
 - **Pick a session** from the menu-bar picker — the newest across all three tools, searchable.
 - **Choose where to continue it.** Click a session to open the continue panel and pick one of the other two agents.
 - **Choose how much to carry over** — the full transcript when it fits the target model's context, or a handoff brief (a structured summary plus your most recent exchanges) when it wouldn't.
-- **It opens resumed.** Continuo writes the target's native session file and launches your terminal straight into it.
+- **It opens resumed.** Continuo writes the target's native session file and opens the resumed session in your chosen destination.
 
 <p align="center">
   <img src="docs/screenshots/continue.webp" width="440" alt="The continue panel: choose which agent to continue in and how much history to carry over">
 </p>
 
-Settings lets you point at custom homes, pick target models per direction, choose your terminal, and toggle the hotkey.
+Settings lets you point at custom homes, pick target models per direction, choose where sessions open, and toggle the hotkey.
 
 <p align="center">
-  <img src="docs/screenshots/settings.webp" width="520" alt="Continuo settings: hotkey, terminal, and agent home locations">
+  <img src="docs/screenshots/settings.webp" width="520" alt="Continuo settings: hotkey, session destination, and agent home locations">
 </p>
+
+### Supported session destinations
+
+A session destination can be a conventional terminal or a workspace environment. Continuo currently supports:
+
+- **Terminal, iTerm2, and Ghostty** — open the resumed agent directly in a new terminal session.
+- **CMUX** — create a named workspace and run the resumed agent inside it. One-time password access must be enabled under CMUX → Settings → Automation.
+- **Superset** — reuse or create the matching project and Git-branch workspace, then open the resumed agent inside it. Superset v2 and a one-time CLI sign-in are required.
 
 ## How it works
 
