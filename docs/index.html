@@ -3,13 +3,24 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Continuo — continue a coding-agent session in a different agent</title>
-<meta name="description" content="A macOS menu-bar app that continues a Claude Code, Codex, or OpenCode session in a different agent — any direction, on demand.">
-<meta property="og:title" content="Continuo">
-<meta property="og:description" content="Continue a coding-agent session in a different agent — Claude Code, Codex, or OpenCode, any direction.">
-<meta property="og:image" content="poster.webp">
+<title>Continuo — move a coding session between agents</title>
+<meta name="description" content="Move a coding session between Claude Code, Codex, and OpenCode on your Mac.">
+<meta property="og:title" content="Continuo — move a coding session between agents">
+<meta property="og:description" content="Move a coding session between Claude Code, Codex, and OpenCode on your Mac.">
 <meta property="og:type" content="website">
-<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><circle cx='50' cy='50' r='42' fill='%23ff6b35'/></svg>">
+<meta property="og:url" content="https://usecontinuo.dev/">
+<meta property="og:image" content="https://usecontinuo.dev/og-image.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="Continuo — start in one coding agent, finish in another">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="Continuo — move a coding session between agents">
+<meta name="twitter:description" content="Move a coding session between Claude Code, Codex, and OpenCode on your Mac.">
+<meta name="twitter:image" content="https://usecontinuo.dev/og-image.png">
+<meta name="twitter:image:alt" content="Continuo — start in one coding agent, finish in another">
+<link rel="icon" type="image/png" sizes="64x64" href="/favicon.png">
+<link rel="icon" href="/favicon.ico" sizes="any">
+<link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png">
 <script src="https://cdn.counter.dev/script.js" data-id="4fbcc31f-5f37-40c3-8788-8fb56c79209b" data-utcoffset="3"></script>
 <style>
   :root {
@@ -78,7 +89,7 @@
     text-align: center; padding: 64px 24px; gap: 15px;
     transform: translateY(-4.5vh);
   }
-  .wordmark { display: block; width: 262px; max-width: 72vw; height: auto; margin-bottom: 4px; }
+  .wordmark { display: block; width: 360px; max-width: 82vw; height: auto; margin-bottom: 4px; }
   h1 { font-size: clamp(26px, 3.6vw, 42px); font-weight: 600; line-height: 1.12; letter-spacing: -0.01em; max-width: 640px; }
   .sub {
     font-family: ui-sans-serif, -apple-system, "Helvetica Neue", sans-serif;
@@ -116,13 +127,30 @@
   .hiw-link { margin-top: 12px; display: inline-block; font-family: ui-sans-serif,-apple-system,sans-serif; font-size: 14px; font-weight: 600; color: var(--sepia); text-decoration: none; border-bottom: 1.5px solid var(--line); padding-bottom: 2px; }
   .hiw-link:hover { border-bottom-color: var(--sepia); }
   .hiw { position: relative; z-index: 6; background: #fbf4e7; padding: 78px 28px 96px; min-height: 100vh; display: flex; flex-direction: column; justify-content: center; }
-  .hiw h2 { text-align: center; font-family: ui-sans-serif,-apple-system,sans-serif; font-size: 14px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: var(--ink-soft); margin: 0 0 16px; }
-  .hiw-lead { font-family: ui-sans-serif,-apple-system,sans-serif; font-size: 18px; color: #4c4e52; text-align: center; max-width: 580px; margin: 0 auto 40px; line-height: 1.5; }
-  .hiw-steps { display: grid; grid-template-columns: repeat(3,1fr); gap: 26px; max-width: 1040px; margin: 0 auto; }
-  .hiw-steps figure { margin: 0; }
+  .hiw h2 { text-align: center; font-family: ui-sans-serif,-apple-system,sans-serif; font-size: 14px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: var(--ink-soft); margin: 0 0 38px; }
+  .hiw-steps { display: flex; flex-direction: column; gap: 76px; width: 100%; max-width: 1040px; margin: 0 auto; }
+  .hiw-steps figure { min-width: 0; margin: 0; }
   .hiw-steps img { width: 100%; border-radius: 12px; box-shadow: 0 14px 34px rgba(40,25,10,0.22); display: block; }
-  .hiw-steps figcaption { font-family: ui-sans-serif,-apple-system,sans-serif; font-size: 14px; color: #5c4630; margin-top: 13px; line-height: 1.45; }
-  @media (max-width: 700px) { .hiw-steps { grid-template-columns: 1fr; } .hiw { padding: 56px 22px 72px; } }
+  .primary-step { display: grid; align-items: center; gap: clamp(40px, 6vw, 76px); }
+  .picker-step { grid-template-columns: minmax(0,430px) minmax(240px,1fr); }
+  .continue-step { grid-template-columns: minmax(240px,1fr) minmax(0,500px); }
+  .continue-step img { grid-column: 2; grid-row: 1; }
+  .continue-step figcaption { grid-column: 1; grid-row: 1; }
+  .primary-step figcaption { font-family: "Iowan Old Style", Palatino, Georgia, serif; font-size: clamp(26px,3.2vw,38px); color: var(--ink); line-height: 1.18; letter-spacing: -0.015em; }
+  .settings-step { grid-template-columns: minmax(0,430px) minmax(240px,1fr); }
+  .feedback { width: min(100%, 1040px); margin: 64px auto 0; padding-top: 24px; border-top: 1px solid var(--line); text-align: center; font-family: ui-sans-serif,-apple-system,sans-serif; font-size: 14px; color: var(--ink-soft); }
+  .feedback a { color: var(--sepia); font-weight: 600; text-decoration: none; border-bottom: 1px solid rgba(138,74,30,0.34); }
+  .feedback a:hover { border-bottom-color: var(--sepia); }
+  @media (max-width: 700px) {
+    .hiw-steps { gap: 48px; }
+    .primary-step { grid-template-columns: 1fr; gap: 18px; }
+    .continue-step img { grid-column: 1; grid-row: 1; }
+    .continue-step figcaption { grid-column: 1; grid-row: 2; }
+    .primary-step figcaption { font-size: 26px; }
+    .settings-step { grid-template-columns: 1fr; width: 100%; }
+    .feedback { margin-top: 48px; }
+    .hiw { padding: 56px 22px 72px; }
+  }
   /* mobile hero: spread the content instead of bunching it in the middle */
   @media (max-width: 640px) {
     .content { transform: none; justify-content: flex-start; min-height: 100vh; padding: 7vh 22px 16vh; gap: 18px; }
@@ -200,12 +228,12 @@
 
   <section class="hiw" id="hiw">
     <h2>How it works</h2>
-    <p class="hiw-lead">Pick a recent session, choose where to continue it, and it opens there — already resumed.</p>
     <div class="hiw-steps">
-      <figure><img src="screenshots/picker.webp" alt="Continuo session picker"><figcaption>Pick a session — every agent, one searchable list.</figcaption></figure>
-      <figure><img src="screenshots/continue.webp" alt="Continue panel"><figcaption>Choose the target agent &amp; how much to carry over.</figcaption></figure>
-      <figure><img src="screenshots/settings.webp" alt="Settings"><figcaption>Set homes, models, terminal, and a global hotkey.</figcaption></figure>
+      <figure class="primary-step picker-step"><img src="screenshots/picker.webp" alt="Continuo session picker"><figcaption>Pick the session you want to keep working on.</figcaption></figure>
+      <figure class="primary-step continue-step"><img src="screenshots/continue.webp" alt="Choose the next agent and how much context to bring"><figcaption>Choose the next agent and how much of the conversation to bring.</figcaption></figure>
+      <figure class="primary-step settings-step"><img src="screenshots/settings.webp" alt="Continuo settings"><figcaption>Set model defaults, choose where sessions open, or change the shortcut.</figcaption></figure>
     </div>
+    <p class="feedback">Something off? Have an idea? <a href="https://github.com/yoavf/continuo/issues/new">Open an issue on GitHub.</a></p>
   </section>
 
   <script async defer src="https://buttons.github.io/buttons.js"></script>
