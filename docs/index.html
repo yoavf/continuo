@@ -102,18 +102,14 @@
     padding: 8px 13px; font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: 13px; color: var(--ink); user-select: all;
   }
 
-  footer {
-    position: fixed; top: 0; right: 0; bottom: 0; width: 42px; z-index: 20;
-    display: flex; align-items: center; justify-content: center; pointer-events: none;
-  }
-  footer span {
-    pointer-events: auto; transform: rotate(-90deg); white-space: nowrap;
-    font-family: ui-sans-serif, -apple-system, sans-serif; font-size: 14px; color: var(--ink-soft);
-  }
-  footer a { color: var(--sepia); text-decoration: none; font-weight: 600; }
-  footer a:hover { text-decoration: underline; }
   .github-button { line-height: 0; }
-  .topright { position: fixed; top: 16px; right: 18px; z-index: 20; line-height: 0; }
+  .topright { position: fixed; top: 16px; right: 18px; z-index: 20; display: flex; align-items: center; gap: 10px; }
+  .byline {
+    font-family: ui-sans-serif, -apple-system, sans-serif; font-size: 13px;
+    color: var(--ink-soft); white-space: nowrap;
+  }
+  .byline a { color: var(--sepia); font-weight: 600; text-decoration: none; }
+  .byline a:hover { text-decoration: underline; }
   /* how it works — scroll-down section */
   html { scroll-behavior: smooth; }
   .hiw-link { margin-top: 12px; display: inline-block; font-family: ui-sans-serif,-apple-system,sans-serif; font-size: 14px; font-weight: 600; color: var(--sepia); text-decoration: none; border-bottom: 1.5px solid var(--line); padding-bottom: 2px; }
@@ -126,6 +122,11 @@
   .hiw-steps img { width: 100%; border-radius: 12px; box-shadow: 0 14px 34px rgba(40,25,10,0.22); display: block; }
   .hiw-steps figcaption { font-family: ui-sans-serif,-apple-system,sans-serif; font-size: 14px; color: #5c4630; margin-top: 13px; line-height: 1.45; }
   @media (max-width: 700px) { .hiw-steps { grid-template-columns: 1fr; } .hiw { padding: 56px 22px 72px; } }
+  /* mobile hero: spread the content instead of bunching it in the middle */
+  @media (max-width: 640px) {
+    .content { transform: none; justify-content: flex-start; min-height: 100vh; padding: 7vh 22px 16vh; gap: 18px; }
+    .content .meta { margin-top: auto; color: #4c4e52; }
+  }
 </style>
 </head>
 <body>
@@ -147,6 +148,7 @@
   </svg>
 
   <div class="topright">
+    <span class="byline">App by <a href="https://x.com/yoavf">@yoavf</a></span>
     <a class="github-button" href="https://github.com/yoavf/continuo" data-color-scheme="no-preference: light; light: light; dark: dark;" data-icon="octicon-star" data-show-count="true" aria-label="Star yoavf/continuo on GitHub">Star</a>
   </div>
 
@@ -205,7 +207,6 @@
     </div>
   </section>
 
-  <footer><span><a href="https://github.com/yoavf/continuo">GitHub</a> · App by <a href="https://x.com/yoavf">@yoavf</a></span></footer>
   <script async defer src="https://buttons.github.io/buttons.js"></script>
   <script>
   (function () {
