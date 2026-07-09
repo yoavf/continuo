@@ -292,13 +292,17 @@ import Testing
 
 @Test func providerLocalNoiseIsOmittedFromMirrors() throws {
     let base = Date(timeIntervalSince1970: 1_783_000_801)
-    func event(_ index: Int, text: String) -> CanonicalEvent {
+    func event(
+        _ index: Int,
+        role: CanonicalRole = .user,
+        text: String
+    ) -> CanonicalEvent {
         CanonicalEvent(
             id: "noise-\(index)",
             sourceProvider: .claude,
             sourceEventID: "noise-\(index)",
             timestamp: base.addingTimeInterval(Double(index)),
-            role: .user,
+            role: role,
             kind: "message",
             text: text
         )
@@ -317,14 +321,30 @@ import Testing
         events: [
             event(0, text: "<command-name>/effort</command-name>\n<command-message>effort</command-message>"),
             event(1, text: "<local-command-stdout>Set effort level to high</local-command-stdout>"),
-            event(2, text: "Real question about the build system.")
+            event(2, text: """
+            <task-notification>
+            <task-id>task-1</task-id>
+            <status>killed</status>
+            <summary>Background command was stopped</summary>
+            </task-notification>
+            """),
+            event(3, role: .assistant, text: "No response requested."),
+            event(4, text: "Continue from where you left off."),
+            event(5, text: "<bash-input>open docs/index.html</bash-input>"),
+            event(6, text: "<bash-stdout>(Bash completed with no output)</bash-stdout>"),
+            event(7, text: "Real question about the build system.")
         ]
     )
 
-    // Import-side: the claude adapter never creates these events at all.
+    // Classification-side: known provider control messages are all noise.
     #expect(isProviderLocalNoise(session.events[0].text))
     #expect(isProviderLocalNoise(session.events[1].text))
-    #expect(!isProviderLocalNoise(session.events[2].text))
+    #expect(isProviderLocalNoise(session.events[2].text))
+    #expect(isProviderLocalNoise(session.events[3].text))
+    #expect(isProviderLocalNoise(session.events[4].text))
+    #expect(isProviderLocalNoise(session.events[5].text))
+    #expect(isProviderLocalNoise(session.events[6].text))
+    #expect(!isProviderLocalNoise(session.events[7].text))
 
     // Render-side: pre-existing noise in canonical data is skipped too.
     let built = OpenCodeAdapter().buildExport(
@@ -337,7 +357,43 @@ import Testing
     let encoded = String(data: try JSONEncoder().encode(JSONValue.object(built.export)), encoding: .utf8) ?? ""
     #expect(!encoded.contains("command-name"))
     #expect(!encoded.contains("local-command-stdout"))
+    #expect(!encoded.contains("task-notification"))
+    #expect(!encoded.contains("No response requested."))
+    #expect(!encoded.contains("Continue from where you left off."))
+    #expect(!encoded.contains("bash-input"))
+    #expect(!encoded.contains("bash-stdout"))
     #expect(encoded.contains("Real question about the build system."))
+}
+
+@Test func openCodeSessionReplacementCascadesToOldMessagesAndParts() throws {
+    let root = URL(fileURLWithPath: NSTemporaryDirectory(), isDirectory: true)
+        .appendingPathComponent("agent-sync-opencode-cleanup-\(UUID().uuidString.lowercased())", isDirectory: true)
+    defer { try? FileManager.default.removeItem(at: root) }
+    try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+    let database = root.appendingPathComponent("opencode.db")
+
+    try OpenCodeSQL.execute(database: database, sql: """
+    CREATE TABLE session (id TEXT PRIMARY KEY);
+    CREATE TABLE message (
+        id TEXT PRIMARY KEY,
+        session_id TEXT NOT NULL REFERENCES session(id) ON DELETE CASCADE
+    );
+    CREATE TABLE part (
+        id TEXT PRIMARY KEY,
+        message_id TEXT NOT NULL REFERENCES message(id) ON DELETE CASCADE
+    );
+    INSERT INTO session VALUES ('session-1');
+    INSERT INTO message VALUES ('message-1', 'session-1');
+    INSERT INTO part VALUES ('part-1', 'message-1');
+    """)
+
+    try OpenCodeSQL.execute(
+        database: database,
+        sql: "DELETE FROM session WHERE id = 'session-1';"
+    )
+
+    #expect(try sqliteScalar(database, "SELECT count(*) FROM message;") == "0")
+    #expect(try sqliteScalar(database, "SELECT count(*) FROM part;") == "0")
 }
 
 @Test func codexToolEventsRenderAsClaudeToolBlocksNotVisibleContextMessages() throws {

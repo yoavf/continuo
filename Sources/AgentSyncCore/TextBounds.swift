@@ -126,11 +126,17 @@ public func isProviderLocalNoise(_ text: String) -> Bool {
     let prefixes = [
         "<command-name", "<command-message", "<command-args",
         "<local-command-stdout", "<local-command-stderr", "<local-command-caveat",
+        "<task-notification", "<bash-input", "<bash-stdout", "<bash-stderr",
         "<system-reminder", "<environment_context", "<user_instructions",
         "# AGENTS.md", "<INSTRUCTIONS"
     ]
     let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
-    return prefixes.contains { trimmed.hasPrefix($0) }
+    let exactMessages = [
+        "Continue from where you left off.",
+        "No response requested."
+    ]
+    return exactMessages.contains(trimmed)
+        || prefixes.contains { trimmed.hasPrefix($0) }
 }
 
 /// Anything that must never become a session title or "goal": provider-local

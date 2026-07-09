@@ -40,7 +40,7 @@ public extension OpenCodeAdapter {
 
         if existingMirror != nil {
             // Bridge-owned session: clear it so import can't leave stale rows.
-            _ = try? OpenCodeSQL.execute(
+            try OpenCodeSQL.execute(
                 database: database,
                 sql: "DELETE FROM session WHERE id = \(OpenCodeSQL.quote(targetSessionID));"
             )
@@ -333,7 +333,9 @@ extension OpenCodeSQL {
     static func execute(database: URL, sql: String) throws {
         let process = Process()
         process.executableURL = URL(fileURLWithPath: "/usr/bin/sqlite3")
-        process.arguments = [database.path, sql]
+        // sqlite3 disables foreign-key enforcement by default. OpenCode uses
+        // cascades to remove transcript rows when a session is replaced.
+        process.arguments = ["-cmd", "PRAGMA foreign_keys = ON", database.path, sql]
         let stderr = Pipe()
         process.standardOutput = Pipe()
         process.standardError = stderr
