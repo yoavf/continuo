@@ -103,13 +103,14 @@
   }
 
   .github-button { line-height: 0; }
-  .topright { position: fixed; top: 16px; right: 18px; z-index: 20; display: flex; align-items: center; gap: 10px; }
-  .byline {
-    font-family: ui-sans-serif, -apple-system, sans-serif; font-size: 13px;
-    color: var(--ink-soft); white-space: nowrap;
+  .topright { position: fixed; top: 16px; right: 18px; z-index: 20; line-height: 0; }
+  .attribution {
+    position: absolute; z-index: 5; left: 50%; bottom: clamp(22px, 4vh, 38px); transform: translateX(-50%);
+    font-family: "Avenir Next Condensed", "Arial Narrow", sans-serif;
+    font-size: 16px; font-weight: 500; letter-spacing: 0.035em; color: #684426; white-space: nowrap;
   }
-  .byline a { color: var(--sepia); font-weight: 600; text-decoration: none; }
-  .byline a:hover { text-decoration: underline; }
+  .attribution a { color: var(--sepia); font-weight: 600; text-decoration: none; border-bottom: 1px solid rgba(138,74,30,0.34); }
+  .attribution a:hover { border-bottom-color: var(--sepia); }
   /* how it works — scroll-down section */
   html { scroll-behavior: smooth; }
   .hiw-link { margin-top: 12px; display: inline-block; font-family: ui-sans-serif,-apple-system,sans-serif; font-size: 14px; font-weight: 600; color: var(--sepia); text-decoration: none; border-bottom: 1.5px solid var(--line); padding-bottom: 2px; }
@@ -148,7 +149,6 @@
   </svg>
 
   <div class="topright">
-    <span class="byline">App by <a href="https://x.com/yoavf">@yoavf</a></span>
     <a class="github-button" href="https://github.com/yoavf/continuo" data-color-scheme="no-preference: light; light: light; dark: dark;" data-icon="octicon-star" data-show-count="true" aria-label="Star yoavf/continuo on GitHub">Star</a>
   </div>
 
@@ -195,6 +195,7 @@
       <div class="meta">Free &amp; open source</div>
       <a class="hiw-link" href="#hiw">See how it works ↓</a>
     </div>
+    <div class="attribution">A bridge built by <a href="https://x.com/yoavf">@yoavf</a></div>
   </main>
 
   <section class="hiw" id="hiw">
