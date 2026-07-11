@@ -61,12 +61,13 @@ jobs:
         with:
           script: |
             const marker = '<!-- continuo-preview-build -->';
+            const headSha = context.payload.pull_request.head.sha;
             const body = `${marker}
             ### Download this PR build
 
             [Download Continuo preview](${process.env.ARTIFACT_URL})
 
-            Unsigned macOS development build for commit \`${context.sha.slice(0, 7)}\`. The link expires after 7 days and requires GitHub sign-in.`;
+            Unsigned macOS development build for commit \`${headSha.slice(0, 7)}\`. The link expires after 7 days and requires GitHub sign-in.`;
             const coordinates = {
               owner: context.repo.owner,
               repo: context.repo.repo,
