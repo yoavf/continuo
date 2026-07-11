@@ -743,6 +743,42 @@ import Testing
     #expect(toolUseResult.string("stdout") == #"{"nested":true}"#)
 }
 
+@Test func claudeAskUserQuestionRendersAsVisibleCodexConversation() throws {
+    let root = URL(fileURLWithPath: NSTemporaryDirectory(), isDirectory: true)
+        .appendingPathComponent("continuo-question-transfer-\(UUID().uuidString.lowercased())", isDirectory: true)
+    defer { try? FileManager.default.removeItem(at: root) }
+    try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+
+    let source = root.appendingPathComponent("11111111-1111-4111-8111-111111111111.jsonl")
+    let transcript = #"""
+    {"type":"assistant","sessionId":"11111111-1111-4111-8111-111111111111","uuid":"ask-envelope","cwd":"/tmp/project","timestamp":"2026-07-07T11:20:40.691Z","message":{"role":"assistant","model":"claude-fable-5","content":[{"type":"tool_use","id":"toolu_question_1","name":"AskUserQuestion","input":{"questions":[{"question":"What should editing let users change?","header":"Edit scope","multiSelect":false,"options":[{"label":"Timing only","description":"Only timing and thresholds."},{"label":"Full editing","description":"Edit every check field."}]}]}}]}}
+    {"type":"user","sessionId":"11111111-1111-4111-8111-111111111111","uuid":"answer-envelope","cwd":"/tmp/project","timestamp":"2026-07-07T11:20:45.691Z","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"toolu_question_1","content":"Your questions have been answered."}]},"toolUseResult":{"questions":[{"question":"What should editing let users change?","header":"Edit scope","multiSelect":false,"options":[{"label":"Timing only","description":"Only timing and thresholds."},{"label":"Full editing","description":"Edit every check field."}]}],"answers":{"What should editing let users change?":"Full editing"},"annotations":{}}}
+    """#
+    try Data((transcript + "\n").utf8).write(to: source)
+
+    let session = try #require(try ClaudeAdapter().importSession(from: source))
+    let question = try #require(session.events.first { $0.kind == "question" })
+    let answer = try #require(session.events.first { $0.kind == "answer" })
+    #expect(question.role == .assistant)
+    #expect(question.text.contains("[Question: Edit scope]"))
+    #expect(question.text.contains("Timing only — Only timing and thresholds."))
+    #expect(answer.role == .user)
+    #expect(answer.text == "[Answer: Edit scope]\nFull editing")
+
+    let codexHome = root.appendingPathComponent("codex", isDirectory: true)
+    let mirror = try CodexAdapter().render(
+        session: session,
+        targetSessionID: "22222222-2222-4222-8222-222222222222",
+        codexHome: codexHome,
+        existingMirror: nil,
+        defaultModel: "gpt-5.5"
+    )
+    let rendered = try String(contentsOfFile: mirror.targetPath, encoding: .utf8)
+    #expect(rendered.contains("[Question: Edit scope]"))
+    #expect(rendered.contains("[Answer: Edit scope]"))
+    #expect(!rendered.contains("\"name\":\"AskUserQuestion\""))
+}
+
 private func findOnlyCodexSource(in codexHome: URL) -> URL {
     let sessions = codexHome.appendingPathComponent("sessions", isDirectory: true)
     let paths = (try? FileManager.default.subpathsOfDirectory(atPath: sessions.path)) ?? []
