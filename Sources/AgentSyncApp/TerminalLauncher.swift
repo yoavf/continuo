@@ -2,6 +2,34 @@ import AgentSyncCore
 import AppKit
 import Foundation
 
+enum CodexLaunchDestination: String, CaseIterable, Identifiable {
+    case cli
+    case chatGPTDesktop
+
+    var id: String { rawValue }
+
+    var displayName: String {
+        switch self {
+        case .cli: return "Codex CLI"
+        case .chatGPTDesktop: return "ChatGPT Desktop (Codex)"
+        }
+    }
+}
+
+enum ClaudeLaunchDestination: String, CaseIterable, Identifiable {
+    case cli
+    case claudeDesktop
+
+    var id: String { rawValue }
+
+    var displayName: String {
+        switch self {
+        case .cli: return "Claude Code CLI"
+        case .claudeDesktop: return "Claude Desktop (Code)"
+        }
+    }
+}
+
 enum TerminalApp: String, CaseIterable, Identifiable {
     case terminal
     case iterm
@@ -63,6 +91,7 @@ enum TerminalApp: String, CaseIterable, Identifiable {
 enum TerminalLaunchError: LocalizedError {
     case launchFailed(String, Int32, String)
     case notInstalled(String)
+    case desktopOpenFailed(String)
     case cmuxSetupRequired(CMUXConnectionStatus)
     case supersetSetupRequired(String)
 
@@ -74,6 +103,8 @@ enum TerminalLaunchError: LocalizedError {
             return "\(terminal) launch failed (status \(status))\(suffix)"
         case .notInstalled(let terminal):
             return "\(terminal) is not installed."
+        case .desktopOpenFailed(let app):
+            return "Could not open this session in \(app)."
         case .cmuxSetupRequired(let status):
             return status.guidance ?? "CMUX needs setup in Settings → Automation."
         case .supersetSetupRequired(let detail):
@@ -93,7 +124,7 @@ enum TerminalLaunchError: LocalizedError {
                 terminal: .superset,
                 message: errorDescription ?? TerminalApp.superset.setupInstructions
             )
-        case .launchFailed, .notInstalled:
+        case .launchFailed, .notInstalled, .desktopOpenFailed:
             return nil
         }
     }
@@ -168,8 +199,19 @@ extension TerminalLauncher {
     static func launch(
         _ ticket: ResumeTicket,
         using preferred: TerminalApp,
+        codexDestination: CodexLaunchDestination = .cli,
+        claudeDestination: ClaudeLaunchDestination = .cli,
         preparation suppliedPreparation: TerminalLaunchPreparation? = nil
     ) throws {
+        if ticket.targetProvider == .codex, codexDestination == .chatGPTDesktop {
+            try launchCodexDesktop(sessionID: ticket.targetSessionID)
+            return
+        }
+        if ticket.targetProvider == .claude, claudeDestination == .claudeDesktop {
+            try launchClaudeDesktop(sessionID: ticket.targetSessionID)
+            return
+        }
+
         let terminal = preferred.isInstalled ? preferred : .terminal
         let cwd = existingDirectoryOrHome(ticket.workingDirectory)
         let preparation: TerminalLaunchPreparation
@@ -224,6 +266,36 @@ extension TerminalLauncher {
                 cwd: workingDirectory,
                 command: command
             )
+        }
+    }
+
+    static func codexDesktopURL(sessionID: String) -> URL? {
+        URL(string: "codex://threads/\(sessionID)")
+    }
+
+    static func claudeDesktopURL(sessionID: String) -> URL? {
+        var components = URLComponents()
+        components.scheme = "claude"
+        components.host = "resume"
+        components.queryItems = [URLQueryItem(name: "session", value: sessionID)]
+        return components.url
+    }
+
+    private static func launchCodexDesktop(sessionID: String) throws {
+        guard NSWorkspace.shared.urlForApplication(withBundleIdentifier: "com.openai.codex") != nil else {
+            throw TerminalLaunchError.notInstalled("ChatGPT Desktop")
+        }
+        guard let url = codexDesktopURL(sessionID: sessionID), NSWorkspace.shared.open(url) else {
+            throw TerminalLaunchError.desktopOpenFailed("ChatGPT Desktop")
+        }
+    }
+
+    private static func launchClaudeDesktop(sessionID: String) throws {
+        guard NSWorkspace.shared.urlForApplication(withBundleIdentifier: "com.anthropic.claudefordesktop") != nil else {
+            throw TerminalLaunchError.notInstalled("Claude Desktop")
+        }
+        guard let url = claudeDesktopURL(sessionID: sessionID), NSWorkspace.shared.open(url) else {
+            throw TerminalLaunchError.desktopOpenFailed("Claude Desktop")
         }
     }
 
