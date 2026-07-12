@@ -29,7 +29,7 @@ cp "$DMG" "$UPDATES/Continuo.dmg"
 ARGS=(
     --download-url-prefix "https://github.com/yoavf/continuo/releases/download/$TAG/"
     --link "https://github.com/yoavf/continuo/releases/tag/$TAG"
-    -o appcast.xml
+    -o "$UPDATES/appcast.xml"
 )
 
 if [ -n "${SPARKLE_ED_PRIVATE_KEY:-}" ]; then
