@@ -60,9 +60,11 @@ public final class BridgeStateStore {
     /// Serializes loads so two threads can't both run the (expensive, one-time)
     /// legacy migration.
     private static let migrationLock = NSLock()
-    /// Serializes mutations within this process. The file lock below extends
-    /// the same guarantee to the menu-bar app and CLI running concurrently.
-    private static let processMutationLock = NSLock()
+    /// Same-directory mutations serialize within this process. The file lock
+    /// below extends the guarantee to the menu-bar app and CLI, while unrelated
+    /// custom state directories remain independent.
+    private static let mutationLockRegistryLock = NSLock()
+    nonisolated(unsafe) private static var mutationLocksByDirectory: [String: NSLock] = [:]
 
     public init(stateDirectory: URL, fileManager: FileManager = .default) {
         self.stateDirectory = stateDirectory
@@ -74,8 +76,9 @@ public final class BridgeStateStore {
     /// loading the same state and later overwriting it with a stale copy.
     func withExclusiveMutation<T>(_ operation: () throws -> T) throws -> T {
         try fm.createDirectory(at: stateDirectory, withIntermediateDirectories: true)
-        Self.processMutationLock.lock()
-        defer { Self.processMutationLock.unlock() }
+        let processLock = Self.mutationLock(for: stateDirectory)
+        processLock.lock()
+        defer { processLock.unlock() }
 
         let lockURL = stateDirectory.appendingPathComponent(".bridge-state.lock")
         let descriptor = Darwin.open(lockURL.path, O_CREAT | O_RDWR, S_IRUSR | S_IWUSR)
@@ -89,6 +92,20 @@ public final class BridgeStateStore {
         }
         defer { flock(descriptor, LOCK_UN) }
         return try operation()
+    }
+
+    private static func mutationLock(for stateDirectory: URL) -> NSLock {
+        // The directory exists before this is called, so resolving symlinks
+        // gives every spelling of the same state directory one registry key.
+        let key = stateDirectory.resolvingSymlinksInPath().standardizedFileURL.path
+        mutationLockRegistryLock.lock()
+        defer { mutationLockRegistryLock.unlock() }
+        if let existing = mutationLocksByDirectory[key] {
+            return existing
+        }
+        let created = NSLock()
+        mutationLocksByDirectory[key] = created
+        return created
     }
 
     public func load() throws -> BridgeState {

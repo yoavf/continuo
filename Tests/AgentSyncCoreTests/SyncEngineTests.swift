@@ -683,6 +683,41 @@ import Testing
     #expect(finished.wait(timeout: .now() + 2) == .success)
 }
 
+@Test func separateBridgeStateDirectoriesDoNotBlockEachOther() throws {
+    let root = URL(fileURLWithPath: NSTemporaryDirectory(), isDirectory: true)
+        .appendingPathComponent("agent-sync-independent-locks-\(UUID().uuidString.lowercased())", isDirectory: true)
+    defer { try? FileManager.default.removeItem(at: root) }
+
+    let firstEntered = DispatchSemaphore(value: 0)
+    let releaseFirst = DispatchSemaphore(value: 0)
+    let secondEntered = DispatchSemaphore(value: 0)
+    let finished = DispatchGroup()
+
+    finished.enter()
+    DispatchQueue.global().async {
+        defer { finished.leave() }
+        let store = BridgeStateStore(stateDirectory: root.appendingPathComponent("first", isDirectory: true))
+        _ = try? store.withExclusiveMutation {
+            firstEntered.signal()
+            releaseFirst.wait()
+        }
+    }
+    #expect(firstEntered.wait(timeout: .now() + 2) == .success)
+
+    finished.enter()
+    DispatchQueue.global().async {
+        defer { finished.leave() }
+        let store = BridgeStateStore(stateDirectory: root.appendingPathComponent("second", isDirectory: true))
+        _ = try? store.withExclusiveMutation {
+            secondEntered.signal()
+        }
+    }
+
+    #expect(secondEntered.wait(timeout: .now() + 2) == .success)
+    releaseFirst.signal()
+    #expect(finished.wait(timeout: .now() + 2) == .success)
+}
+
 @Test func bridgeMutationLockSerializesAcrossProcesses() throws {
     let root = URL(fileURLWithPath: NSTemporaryDirectory(), isDirectory: true)
         .appendingPathComponent("agent-sync-process-lock-\(UUID().uuidString.lowercased())", isDirectory: true)
