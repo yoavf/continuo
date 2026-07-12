@@ -658,7 +658,7 @@ import Testing
     let finished = DispatchGroup()
 
     finished.enter()
-    DispatchQueue.global().async {
+    let firstWorker = Thread {
         defer { finished.leave() }
         let store = BridgeStateStore(stateDirectory: root)
         _ = try? store.withExclusiveMutation {
@@ -666,16 +666,18 @@ import Testing
             releaseFirst.wait()
         }
     }
+    firstWorker.start()
     #expect(firstEntered.wait(timeout: .now() + 2) == .success)
 
     finished.enter()
-    DispatchQueue.global().async {
+    let secondWorker = Thread {
         defer { finished.leave() }
         let store = BridgeStateStore(stateDirectory: root)
         _ = try? store.withExclusiveMutation {
             secondEntered.signal()
         }
     }
+    secondWorker.start()
 
     #expect(secondEntered.wait(timeout: .now() + 0.15) == .timedOut)
     releaseFirst.signal()
@@ -694,7 +696,7 @@ import Testing
     let finished = DispatchGroup()
 
     finished.enter()
-    DispatchQueue.global().async {
+    let firstWorker = Thread {
         defer { finished.leave() }
         let store = BridgeStateStore(stateDirectory: root.appendingPathComponent("first", isDirectory: true))
         _ = try? store.withExclusiveMutation {
@@ -702,16 +704,18 @@ import Testing
             releaseFirst.wait()
         }
     }
+    firstWorker.start()
     #expect(firstEntered.wait(timeout: .now() + 2) == .success)
 
     finished.enter()
-    DispatchQueue.global().async {
+    let secondWorker = Thread {
         defer { finished.leave() }
         let store = BridgeStateStore(stateDirectory: root.appendingPathComponent("second", isDirectory: true))
         _ = try? store.withExclusiveMutation {
             secondEntered.signal()
         }
     }
+    secondWorker.start()
 
     #expect(secondEntered.wait(timeout: .now() + 2) == .success)
     releaseFirst.signal()
