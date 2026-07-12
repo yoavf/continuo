@@ -1,5 +1,6 @@
 import AgentSyncCore
 import AppKit
+import ScreenCaptureKit
 import SwiftUI
 
 /// Dev-only screenshot generator for the README. Runs when the app is launched
@@ -14,6 +15,7 @@ enum Screenshots {
     struct Job {
         let name: String
         let width: CGFloat
+        let height: CGFloat?
         let view: AnyView
     }
 
@@ -48,9 +50,9 @@ enum Screenshots {
         NSApp.activate(ignoringOtherApps: true)
 
         let jobs = [
-            Job(name: "picker", width: 480, view: AnyView(SessionPickerView(model: model))),
-            Job(name: "continue", width: 480, view: AnyView(ContinueView(model: model, item: demoSessions()[0], onDismiss: {}))),
-            Job(name: "settings", width: 600, view: AnyView(SettingsView(model: model)))
+            Job(name: "picker", width: 480, height: nil, view: AnyView(SessionPickerView(model: model))),
+            Job(name: "continue", width: 480, height: nil, view: AnyView(ContinueView(model: model, item: demoSessions()[0], onDismiss: {}))),
+            Job(name: "settings", width: 600, height: 620, view: AnyView(SettingsView(model: model)))
         ]
         run(jobs, index: 0)
     }
@@ -61,7 +63,9 @@ enum Screenshots {
         }
         let job = jobs[index]
         let hosting = NSHostingController(rootView: job.view)
-        hosting.sizingOptions = .preferredContentSize
+        if job.height == nil {
+            hosting.sizingOptions = .preferredContentSize
+        }
         let window = NSWindow(contentViewController: hosting)
         window.styleMask = [.titled, .fullSizeContentView]
         window.titlebarAppearsTransparent = true
@@ -69,23 +73,62 @@ enum Screenshots {
         window.standardWindowButton(.closeButton)?.isHidden = true
         window.standardWindowButton(.miniaturizeButton)?.isHidden = true
         window.standardWindowButton(.zoomButton)?.isHidden = true
-        window.setContentSize(NSSize(width: job.width, height: 560))
+        window.setContentSize(NSSize(width: job.width, height: job.height ?? 560))
         window.center()
         window.makeKeyAndOrderFront(nil)
 
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) {
-            if let image = CGWindowListCreateImage(
-                .null, .optionIncludingWindow, CGWindowID(window.windowNumber),
-                [.boundsIgnoreFraming, .bestResolution]
-            ) {
-                let rep = NSBitmapImageRep(cgImage: image)
-                if let data = rep.representation(using: .png, properties: [:]) {
-                    try? data.write(to: outputDir.appendingPathComponent("\(job.name).png"))
-                }
+        Task { @MainActor in
+            try? await Task.sleep(for: .milliseconds(800))
+            await capture(window, to: outputDir.appendingPathComponent("\(job.name).png"))
+            DispatchQueue.main.async {
+                window.orderOut(nil)
+                run(jobs, index: index + 1)
             }
-            window.orderOut(nil)
-            run(jobs, index: index + 1)
         }
+    }
+
+    private static func capture(_ window: NSWindow, to destination: URL) async {
+        guard let image = await captureImage(for: window) else {
+            return
+        }
+        let rep = NSBitmapImageRep(cgImage: image)
+        guard let data = rep.representation(using: .png, properties: [:]) else {
+            return
+        }
+        try? data.write(to: destination)
+    }
+
+    private static func captureImage(for window: NSWindow) async -> CGImage? {
+        let content: SCShareableContent
+        do {
+            if #available(macOS 14.4, *) {
+                content = try await SCShareableContent.currentProcess
+            } else {
+                content = try await SCShareableContent.excludingDesktopWindows(
+                    false,
+                    onScreenWindowsOnly: true
+                )
+            }
+        } catch {
+            return nil
+        }
+
+        guard let captureWindow = content.windows.first(where: {
+            $0.windowID == CGWindowID(window.windowNumber)
+        }) else {
+            return nil
+        }
+
+        let filter = SCContentFilter(desktopIndependentWindow: captureWindow)
+        let configuration = SCStreamConfiguration()
+        configuration.width = Int(filter.contentRect.width * CGFloat(filter.pointPixelScale))
+        configuration.height = Int(filter.contentRect.height * CGFloat(filter.pointPixelScale))
+        configuration.ignoreShadowsSingleWindow = true
+        configuration.showsCursor = false
+        return try? await SCScreenshotManager.captureImage(
+            contentFilter: filter,
+            configuration: configuration
+        )
     }
 
     private static func demoSessions() -> [SessionItem] {
