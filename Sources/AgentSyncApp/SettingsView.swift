@@ -112,6 +112,17 @@ private struct GeneralSettingsTab: View {
             }
 
             Section {
+                LabeledContent("Version", value: appVersion)
+                Button("Check for Updates…") {
+                    AppDelegate.checkForUpdates()
+                }
+            } header: {
+                Text("Updates")
+            } footer: {
+                Text("Continuo can check GitHub Releases for signed updates and install them in place.")
+            }
+
+            Section {
                 DisclosureGroup(isExpanded: $advancedExpanded) {
                     PathRow(title: "Claude Code home", path: $claudeHomePath, defaultPath: Prefs.production.claudeHome.path)
                     PathRow(title: "Codex home", path: $codexHomePath, defaultPath: Prefs.production.codexHome.path)
@@ -155,6 +166,11 @@ private struct GeneralSettingsTab: View {
         .alert(item: $setupInstructionsTerminal) { terminal in
             setupAlert(for: terminal)
         }
+    }
+
+    private var appVersion: String {
+        Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String
+            ?? "Development build"
     }
 
     private func setupAlert(for terminal: TerminalApp) -> Alert {

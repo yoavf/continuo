@@ -13,6 +13,9 @@ let package = Package(
         .executable(name: "AgentSyncCLI", targets: ["AgentSyncCLI"]),
         .executable(name: "AgentSyncApp", targets: ["AgentSyncApp"])
     ],
+    dependencies: [
+        .package(url: "https://github.com/sparkle-project/Sparkle", from: "2.9.2")
+    ],
     targets: [
         .target(
             name: "AgentSyncCore",
@@ -24,7 +27,10 @@ let package = Package(
         ),
         .executableTarget(
             name: "AgentSyncApp",
-            dependencies: ["AgentSyncCore"],
+            dependencies: [
+                "AgentSyncCore",
+                .product(name: "Sparkle", package: "Sparkle")
+            ],
             resources: [
                 .copy("Resources/splash-1.png"),
                 .copy("Resources/splash-2.png")
