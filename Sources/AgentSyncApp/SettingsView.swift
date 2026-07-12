@@ -15,6 +15,10 @@ struct SettingsView: View {
                 .tabItem {
                     Label("Models", systemImage: "arrow.left.arrow.right")
                 }
+            AboutSettingsTab()
+                .tabItem {
+                    Label("About", systemImage: "info.circle")
+                }
         }
         .frame(width: 600)
         .frame(minHeight: 460)
@@ -112,17 +116,6 @@ private struct GeneralSettingsTab: View {
             }
 
             Section {
-                LabeledContent("Version", value: appVersion)
-                Button("Check for Updates…") {
-                    AppDelegate.checkForUpdates()
-                }
-            } header: {
-                Text("Updates")
-            } footer: {
-                Text("Continuo can check GitHub Releases for signed updates and install them in place.")
-            }
-
-            Section {
                 DisclosureGroup(isExpanded: $advancedExpanded) {
                     PathRow(title: "Claude Code home", path: $claudeHomePath, defaultPath: Prefs.production.claudeHome.path)
                     PathRow(title: "Codex home", path: $codexHomePath, defaultPath: Prefs.production.codexHome.path)
@@ -166,11 +159,6 @@ private struct GeneralSettingsTab: View {
         .alert(item: $setupInstructionsTerminal) { terminal in
             setupAlert(for: terminal)
         }
-    }
-
-    private var appVersion: String {
-        Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String
-            ?? "Development build"
     }
 
     private func setupAlert(for terminal: TerminalApp) -> Alert {
@@ -221,6 +209,86 @@ private struct GeneralSettingsTab: View {
         } catch {
             return "Install failed: \(error.localizedDescription)"
         }
+    }
+}
+
+// MARK: - About
+
+private struct AboutSettingsTab: View {
+    private let websiteURL = URL(string: "https://usecontinuo.dev")!
+    private let repositoryURL = URL(string: "https://github.com/yoavf/continuo")!
+    private let licenseURL = URL(string: "https://github.com/yoavf/continuo/blob/main/LICENSE")!
+    private let issuesURL = URL(string: "https://github.com/yoavf/continuo/issues/new")!
+    private let authorURL = URL(string: "https://x.com/yoavf")!
+
+    private var versionDescription: String {
+        let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String
+        let build = Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String
+
+        guard let version else {
+            return "Development build"
+        }
+        guard let build, build != version else {
+            return "Version \(version)"
+        }
+        return "Version \(version) (\(build))"
+    }
+
+    var body: some View {
+        VStack(spacing: 0) {
+            VStack(spacing: 10) {
+                Image(nsImage: NSApp.applicationIconImage)
+                    .resizable()
+                    .scaledToFit()
+                    .frame(width: 96, height: 96)
+                    .accessibilityHidden(true)
+
+                Text("Continuo")
+                    .font(.system(size: 26, weight: .semibold, design: .rounded))
+
+                Text("Continue your coding sessions anywhere.")
+                    .font(.headline)
+                    .foregroundStyle(.secondary)
+
+                Text(versionDescription)
+                    .font(.caption)
+                    .foregroundStyle(.tertiary)
+
+                Link("by @yoavf", destination: authorURL)
+                    .font(.caption)
+            }
+
+            VStack(spacing: 16) {
+                Text("Continuo carries the useful context from your recent Claude Code, Codex, and OpenCode sessions into another agent, then opens the new session ready to continue.")
+                    .multilineTextAlignment(.center)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+
+                Button("Check for Updates…") {
+                    AppDelegate.checkForUpdates()
+                }
+                .controlSize(.large)
+
+                HStack(spacing: 18) {
+                    Link("Website", destination: websiteURL)
+                    Link("GitHub", destination: repositoryURL)
+                    Link("License", destination: licenseURL)
+                    Link("Send Feedback", destination: issuesURL)
+                }
+                .font(.callout)
+            }
+            .frame(maxWidth: 430)
+            .padding(.top, 24)
+
+            Spacer(minLength: 18)
+
+            Text("© 2026 Yoav Farhi. Released under the MIT License.")
+                .font(.caption)
+                .foregroundStyle(.tertiary)
+        }
+        .padding(.horizontal, 40)
+        .padding(.top, 28)
+        .padding(.bottom, 22)
     }
 }
 
