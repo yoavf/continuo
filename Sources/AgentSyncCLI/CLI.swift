@@ -59,7 +59,8 @@ struct AgentSyncCLI {
             }
             let directory = URL(fileURLWithPath: NSString(string: stateDir).expandingTildeInPath, isDirectory: true)
             let start = Date()
-            let state = try BridgeStateStore(stateDirectory: directory).load()
+            let store = BridgeStateStore(stateDirectory: directory)
+            let state = try store.load()
             let elapsed = String(format: "%.1f", Date().timeIntervalSince(start))
             print("state schema=\(state.schemaVersion) canonical_sessions=\(state.canonicalSessions.count) mirrors=\(state.mirrorsByNativeSession.count) elapsed=\(elapsed)s")
         case "prune-state":
@@ -68,45 +69,43 @@ struct AgentSyncCLI {
             }
             let directory = URL(fileURLWithPath: NSString(string: stateDir).expandingTildeInPath, isDirectory: true)
             let store = BridgeStateStore(stateDirectory: directory)
-            var state = try store.load()
+            try store.withExclusiveStateMutation { state in
+                for canonicalID in state.canonicalSessions.keys {
+                    let events = try store.loadEvents(canonicalSessionID: canonicalID)
+                    let deduped = dedupeEventsByContent(events)
+                    if deduped.count != events.count {
+                        try store.saveEvents(deduped, canonicalSessionID: canonicalID)
+                        print("compacted \(canonicalID): \(events.count) -> \(deduped.count) events")
+                    }
 
-            for canonicalID in state.canonicalSessions.keys {
-                let events = try store.loadEvents(canonicalSessionID: canonicalID)
-                let deduped = dedupeEventsByContent(events)
-                if deduped.count != events.count {
-                    try store.saveEvents(deduped, canonicalSessionID: canonicalID)
-                    print("compacted \(canonicalID): \(events.count) -> \(deduped.count) events")
-                }
-
-                let survivingIDs = Set(deduped.map(\.id))
-                let mirrors = state.mirrorsByNativeSession.filter { $0.value.canonicalSessionID == canonicalID }
-                for (key, record) in mirrors {
-                    // A mirror whose file holds far more events than the deduped
-                    // conversation is a runaway artifact of the old echo loop.
-                    // Its unique content is already in the canonical store, so
-                    // drop the bridge-owned file; the next resume renders fresh.
-                    if record.renderedNativeEventIDs.count > deduped.count + 16 {
-                        // Only transcript files are removable artifacts;
-                        // database-backed mirrors (opencode://…) are not files.
-                        if record.targetPath.hasSuffix(".jsonl") {
-                            try? FileManager.default.removeItem(atPath: record.targetPath)
+                    let survivingIDs = Set(deduped.map(\.id))
+                    let mirrors = state.mirrorsByNativeSession.filter { $0.value.canonicalSessionID == canonicalID }
+                    for (key, record) in mirrors {
+                        // A mirror whose file holds far more events than the deduped
+                        // conversation is a runaway artifact of the old echo loop.
+                        // Its unique content is already in the canonical store, so
+                        // drop the bridge-owned file; the next resume renders fresh.
+                        if record.renderedNativeEventIDs.count > deduped.count + 16 {
+                            // Only transcript files are removable artifacts;
+                            // database-backed mirrors (opencode://…) are not files.
+                            if record.targetPath.hasSuffix(".jsonl") {
+                                try? FileManager.default.removeItem(atPath: record.targetPath)
+                            }
+                            state.mirrorsByNativeSession.removeValue(forKey: key)
+                            print("removed runaway mirror \(record.targetProvider.rawValue):\(record.targetSessionID) (\(record.renderedNativeEventIDs.count) rendered events)")
+                            continue
                         }
-                        state.mirrorsByNativeSession.removeValue(forKey: key)
-                        print("removed runaway mirror \(record.targetProvider.rawValue):\(record.targetSessionID) (\(record.renderedNativeEventIDs.count) rendered events)")
-                        continue
-                    }
-                    var record = record
-                    let trimmed = record.importedNativeEventIDs.filter(survivingIDs.contains)
-                    if trimmed.count != record.importedNativeEventIDs.count {
-                        record.importedNativeEventIDs = trimmed
-                        state.mirrorsByNativeSession[key] = record
-                        print("trimmed mirror \(record.targetProvider.rawValue):\(record.targetSessionID) imported ids -> \(trimmed.count)")
+                        var record = record
+                        let trimmed = record.importedNativeEventIDs.filter(survivingIDs.contains)
+                        if trimmed.count != record.importedNativeEventIDs.count {
+                            record.importedNativeEventIDs = trimmed
+                            state.mirrorsByNativeSession[key] = record
+                            print("trimmed mirror \(record.targetProvider.rawValue):\(record.targetSessionID) imported ids -> \(trimmed.count)")
+                        }
                     }
                 }
+                print("pruned state: canonical_sessions=\(state.canonicalSessions.count) mirrors=\(state.mirrorsByNativeSession.count)")
             }
-
-            try store.save(state)
-            print("pruned state: canonical_sessions=\(state.canonicalSessions.count) mirrors=\(state.mirrorsByNativeSession.count)")
         case "e2e":
             let root = try parseRoot(args)
             if FileManager.default.fileExists(atPath: root.path) {

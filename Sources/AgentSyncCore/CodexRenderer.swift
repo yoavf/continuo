@@ -9,6 +9,26 @@ public extension CodexAdapter {
         defaultModel: String,
         modelMappings: ModelMappingSettings? = nil
     ) throws -> MirrorRecord {
+        try renderReservingOwnership(
+            session: session,
+            targetSessionID: targetSessionID,
+            codexHome: codexHome,
+            existingMirror: existingMirror,
+            defaultModel: defaultModel,
+            modelMappings: modelMappings,
+            reserveOwnership: { _ in }
+        )
+    }
+
+    internal func renderReservingOwnership(
+        session: CanonicalSession,
+        targetSessionID: String,
+        codexHome: URL,
+        existingMirror: MirrorRecord?,
+        defaultModel: String,
+        modelMappings: ModelMappingSettings?,
+        reserveOwnership: (MirrorRecord) throws -> Void
+    ) throws -> MirrorRecord {
         let now = Date()
         let transcriptURL = PathEncoding.codexSessionPath(
             codexHome: codexHome,
@@ -22,6 +42,19 @@ public extension CodexAdapter {
             modelMappings: modelMappings
         )
         let text = try LineJSON.renderObjects(rendered.objects)
+        var mirror = MirrorRecord(
+            canonicalSessionID: session.id,
+            targetProvider: .codex,
+            targetSessionID: targetSessionID,
+            targetPath: transcriptURL.path,
+            targetIndexPath: nil,
+            rendererVersion: 1,
+            renderedNativeEventIDs: rendered.nativeEventIDs,
+            importedNativeEventIDs: existingMirror?.importedNativeEventIDs ?? [],
+            createdAt: existingMirror?.createdAt ?? now,
+            updatedAt: now
+        )
+        try reserveOwnership(mirror)
         try NativeFileWriter.writeAtomically(
             text: text,
             to: transcriptURL,
@@ -37,19 +70,8 @@ public extension CodexAdapter {
             model: defaultModel,
             source: "vscode"
         )
-
-        return MirrorRecord(
-            canonicalSessionID: session.id,
-            targetProvider: .codex,
-            targetSessionID: targetSessionID,
-            targetPath: transcriptURL.path,
-            targetIndexPath: indexed ? index.databaseURL.path : nil,
-            rendererVersion: 1,
-            renderedNativeEventIDs: rendered.nativeEventIDs,
-            importedNativeEventIDs: existingMirror?.importedNativeEventIDs ?? [],
-            createdAt: existingMirror?.createdAt ?? now,
-            updatedAt: now
-        )
+        mirror.targetIndexPath = indexed ? index.databaseURL.path : nil
+        return mirror
     }
 
     private func renderJSONL(

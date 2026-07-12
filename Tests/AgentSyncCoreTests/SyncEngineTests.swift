@@ -225,6 +225,111 @@ import Testing
     #expect(roundTrip.targetSessionID == "11111111-1111-4111-8111-111111111111")
 }
 
+@Test func failedNativeWriteKeepsOwnershipReservationForRetry() throws {
+    let root = URL(fileURLWithPath: NSTemporaryDirectory(), isDirectory: true)
+        .appendingPathComponent("agent-sync-resume-recovery-\(UUID().uuidString.lowercased())", isDirectory: true)
+    defer { try? FileManager.default.removeItem(at: root) }
+
+    let fixture = AgentSyncFixtureBuilder(root: root)
+    try fixture.create()
+    let codexSource = findOnlyCodexSource(in: fixture.codexHome)
+    let sourceBefore = try Data(contentsOf: codexSource)
+
+    let blockedClaudeHome = root.appendingPathComponent("blocked-claude-home", isDirectory: true)
+    try FileManager.default.createDirectory(at: blockedClaudeHome, withIntermediateDirectories: true)
+    let projectsPath = blockedClaudeHome.appendingPathComponent("projects")
+    try Data("not a directory".utf8).write(to: projectsPath)
+
+    let configuration = AgentSyncConfiguration(
+        claudeHome: blockedClaudeHome,
+        codexHome: fixture.codexHome,
+        stateDirectory: fixture.stateDirectory,
+        defaultCodexModel: "gpt-5.5",
+        defaultClaudeModel: "claude-sonnet-5"
+    )
+    let engine = SyncEngine(configuration: configuration)
+
+    do {
+        _ = try engine.prepareResume(
+            provider: .codex,
+            sourcePath: codexSource.path,
+            target: .claude,
+            mode: .handoff
+        )
+        Issue.record("Expected the blocked Claude home to reject the native write.")
+    } catch {
+        // The failed write is the interruption point under test.
+    }
+
+    let reservedState = try engine.currentState()
+    let reservation = try #require(reservedState.mirrorsByNativeSession.values.first {
+        $0.targetProvider == .claude
+    })
+    #expect(reservation.isPendingWrite)
+    #expect(!reservation.renderedNativeEventIDs.isEmpty)
+    #expect(!FileManager.default.fileExists(atPath: reservation.targetPath))
+    #expect(try Data(contentsOf: codexSource) == sourceBefore)
+
+    try FileManager.default.removeItem(at: projectsPath)
+    let ticket = try engine.prepareResume(
+        provider: .codex,
+        sourcePath: codexSource.path,
+        target: .claude,
+        mode: .handoff
+    )
+    let recoveredState = try engine.currentState()
+
+    #expect(ticket.targetSessionID == reservation.targetSessionID)
+    #expect(ticket.usedHandoff)
+    #expect(recoveredState.mirrorsByNativeSession.values.filter { $0.targetProvider == .claude }.count == 1)
+    #expect(recoveredState.mirrorsByNativeSession.values.allSatisfy { !$0.isPendingWrite })
+    #expect(FileManager.default.fileExists(atPath: reservation.targetPath))
+    #expect(try Data(contentsOf: codexSource) == sourceBefore)
+}
+
+@Test func missingStateAfterNativeCreationRecoversWithoutDuplicate() throws {
+    let root = URL(fileURLWithPath: NSTemporaryDirectory(), isDirectory: true)
+        .appendingPathComponent("agent-sync-post-write-recovery-\(UUID().uuidString.lowercased())", isDirectory: true)
+    defer { try? FileManager.default.removeItem(at: root) }
+
+    let fixture = AgentSyncFixtureBuilder(root: root)
+    try fixture.create()
+    let codexSource = findOnlyCodexSource(in: fixture.codexHome)
+    let sourceBefore = try Data(contentsOf: codexSource)
+    let engine = SyncEngine(configuration: fixture.configuration())
+
+    let first = try engine.prepareResume(
+        provider: .codex,
+        sourcePath: codexSource.path,
+        target: .claude,
+        mode: .handoff
+    )
+    let firstState = try engine.currentState()
+    let firstMirror = try #require(firstState.mirrorsByNativeSession.values.first {
+        $0.targetSessionID == first.targetSessionID
+    })
+    #expect(FileManager.default.fileExists(atPath: firstMirror.targetPath))
+
+    // The backup captured the pending reservation immediately before the
+    // native write. Losing the primary file models an interrupted legacy
+    // delete-then-move finalization after that native session already exists.
+    try FileManager.default.removeItem(at: fixture.stateDirectory.appendingPathComponent("bridge-state.json"))
+
+    let recovered = try engine.prepareResume(
+        provider: .codex,
+        sourcePath: codexSource.path,
+        target: .claude,
+        mode: .handoff
+    )
+    let recoveredState = try engine.currentState()
+
+    #expect(recovered.targetSessionID == first.targetSessionID)
+    #expect(recoveredState.mirrorsByNativeSession.values.filter { $0.targetProvider == .claude }.count == 1)
+    #expect(recoveredState.mirrorsByNativeSession.values.allSatisfy { !$0.isPendingWrite })
+    #expect(FileManager.default.fileExists(atPath: firstMirror.targetPath))
+    #expect(try Data(contentsOf: codexSource) == sourceBefore)
+}
+
 @Test func handoffModeRendersBriefPlusRecentTurnsAsAFreshMirror() throws {
     let root = URL(fileURLWithPath: NSTemporaryDirectory(), isDirectory: true)
         .appendingPathComponent("agent-sync-handoff-\(UUID().uuidString.lowercased())", isDirectory: true)
@@ -501,6 +606,26 @@ import Testing
     #expect(try store.loadEvents(canonicalSessionID: "canonical-1").count == 1)
 }
 
+@Test func bridgeStateRecoversFromBackupWhenPrimaryIsMissing() throws {
+    let root = URL(fileURLWithPath: NSTemporaryDirectory(), isDirectory: true)
+        .appendingPathComponent("agent-sync-state-recovery-\(UUID().uuidString.lowercased())", isDirectory: true)
+    defer { try? FileManager.default.removeItem(at: root) }
+
+    let store = BridgeStateStore(stateDirectory: root)
+    var recoverable = BridgeState.empty
+    recoverable.canonicalByNativeSession["codex:source"] = "canonical-source"
+    try store.save(recoverable)
+
+    var newer = recoverable
+    newer.canonicalByNativeSession["claude:mirror"] = "canonical-source"
+    try store.save(newer)
+
+    try FileManager.default.removeItem(at: root.appendingPathComponent("bridge-state.json"))
+    let recovered = try store.load()
+
+    #expect(recovered == recoverable)
+}
+
 @Test func nativeFileWriterRefusesUnownedOverwrite() throws {
     let root = URL(fileURLWithPath: NSTemporaryDirectory(), isDirectory: true)
         .appendingPathComponent("agent-sync-writer-\(UUID().uuidString.lowercased())", isDirectory: true)
@@ -520,6 +645,126 @@ import Testing
     } catch AgentSyncError.unsafeWrite {
         #expect(try String(contentsOf: file, encoding: .utf8) == "source\n")
     }
+}
+
+@Test func overlappingBridgeMutationsRunOneAtATime() throws {
+    let root = URL(fileURLWithPath: NSTemporaryDirectory(), isDirectory: true)
+        .appendingPathComponent("agent-sync-mutation-lock-\(UUID().uuidString.lowercased())", isDirectory: true)
+    defer { try? FileManager.default.removeItem(at: root) }
+
+    let firstEntered = DispatchSemaphore(value: 0)
+    let releaseFirst = DispatchSemaphore(value: 0)
+    let secondEntered = DispatchSemaphore(value: 0)
+    let finished = DispatchGroup()
+
+    finished.enter()
+    let firstWorker = Thread {
+        defer { finished.leave() }
+        let store = BridgeStateStore(stateDirectory: root)
+        _ = try? store.withExclusiveMutation {
+            firstEntered.signal()
+            releaseFirst.wait()
+        }
+    }
+    firstWorker.start()
+    #expect(firstEntered.wait(timeout: .now() + 2) == .success)
+
+    finished.enter()
+    let secondWorker = Thread {
+        defer { finished.leave() }
+        let store = BridgeStateStore(stateDirectory: root)
+        _ = try? store.withExclusiveMutation {
+            secondEntered.signal()
+        }
+    }
+    secondWorker.start()
+
+    #expect(secondEntered.wait(timeout: .now() + 0.15) == .timedOut)
+    releaseFirst.signal()
+    #expect(secondEntered.wait(timeout: .now() + 2) == .success)
+    #expect(finished.wait(timeout: .now() + 2) == .success)
+}
+
+@Test func separateBridgeStateDirectoriesDoNotBlockEachOther() throws {
+    let root = URL(fileURLWithPath: NSTemporaryDirectory(), isDirectory: true)
+        .appendingPathComponent("agent-sync-independent-locks-\(UUID().uuidString.lowercased())", isDirectory: true)
+    defer { try? FileManager.default.removeItem(at: root) }
+
+    let firstEntered = DispatchSemaphore(value: 0)
+    let releaseFirst = DispatchSemaphore(value: 0)
+    let secondEntered = DispatchSemaphore(value: 0)
+    let finished = DispatchGroup()
+
+    finished.enter()
+    let firstWorker = Thread {
+        defer { finished.leave() }
+        let store = BridgeStateStore(stateDirectory: root.appendingPathComponent("first", isDirectory: true))
+        _ = try? store.withExclusiveMutation {
+            firstEntered.signal()
+            releaseFirst.wait()
+        }
+    }
+    firstWorker.start()
+    #expect(firstEntered.wait(timeout: .now() + 2) == .success)
+
+    finished.enter()
+    let secondWorker = Thread {
+        defer { finished.leave() }
+        let store = BridgeStateStore(stateDirectory: root.appendingPathComponent("second", isDirectory: true))
+        _ = try? store.withExclusiveMutation {
+            secondEntered.signal()
+        }
+    }
+    secondWorker.start()
+
+    #expect(secondEntered.wait(timeout: .now() + 2) == .success)
+    releaseFirst.signal()
+    #expect(finished.wait(timeout: .now() + 2) == .success)
+}
+
+@Test func bridgeMutationLockSerializesAcrossProcesses() throws {
+    let root = URL(fileURLWithPath: NSTemporaryDirectory(), isDirectory: true)
+        .appendingPathComponent("agent-sync-process-lock-\(UUID().uuidString.lowercased())", isDirectory: true)
+    defer { try? FileManager.default.removeItem(at: root) }
+    try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+
+    let script = """
+    import fcntl, pathlib, sys, time
+    root = pathlib.Path(sys.argv[1])
+    lock = root / ".bridge-state.lock"
+    counter = root / "counter"
+    ready = root / "child-ready"
+    with lock.open("a+") as handle:
+        fcntl.flock(handle, fcntl.LOCK_EX)
+        value = int(counter.read_text()) if counter.exists() else 0
+        ready.write_text("ready")
+        time.sleep(0.25)
+        counter.write_text(str(value + 1))
+    """
+    let child = Process()
+    child.executableURL = URL(fileURLWithPath: "/usr/bin/python3")
+    child.arguments = ["-c", script, root.path]
+    child.standardOutput = Pipe()
+    child.standardError = Pipe()
+    try child.run()
+
+    let readyURL = root.appendingPathComponent("child-ready")
+    let readyDeadline = Date().addingTimeInterval(2)
+    while !FileManager.default.fileExists(atPath: readyURL.path), Date() < readyDeadline {
+        Thread.sleep(forTimeInterval: 0.01)
+    }
+    #expect(FileManager.default.fileExists(atPath: readyURL.path))
+
+    let counterURL = root.appendingPathComponent("counter")
+    let store = BridgeStateStore(stateDirectory: root)
+    try store.withExclusiveMutation {
+        let value = (try? String(contentsOf: counterURL, encoding: .utf8)).flatMap(Int.init) ?? 0
+        try String(value + 1).write(to: counterURL, atomically: true, encoding: .utf8)
+    }
+    child.waitUntilExit()
+
+    #expect(child.terminationStatus == 0)
+    #expect(try String(contentsOf: counterURL, encoding: .utf8) == "2")
 }
 
 @Test func modelMappingUsesProviderRulesThenFallsBackToDefaults() throws {

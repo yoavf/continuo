@@ -1,4 +1,5 @@
 import Foundation
+import Darwin
 
 public struct BridgeState: Codable, Equatable, Sendable {
     public var schemaVersion: Int
@@ -30,7 +31,11 @@ public struct BridgeState: Codable, Equatable, Sendable {
     /// (uncontinued) mirror is the successor.
     public func latestMirror(canonicalSessionID: String, targetProvider: AgentKind) -> MirrorRecord? {
         mirrorsByNativeSession.values
-            .filter { $0.canonicalSessionID == canonicalSessionID && $0.targetProvider == targetProvider }
+            .filter {
+                $0.canonicalSessionID == canonicalSessionID
+                    && $0.targetProvider == targetProvider
+                    && !$0.isPendingWrite
+            }
             .max { lhs, rhs in
                 if lhs.updatedAt != rhs.updatedAt {
                     return lhs.updatedAt < rhs.updatedAt
@@ -55,6 +60,11 @@ public final class BridgeStateStore {
     /// Serializes loads so two threads can't both run the (expensive, one-time)
     /// legacy migration.
     private static let migrationLock = NSLock()
+    /// Same-directory mutations serialize within this process. The file lock
+    /// below extends the guarantee to the menu-bar app and CLI, while unrelated
+    /// custom state directories remain independent.
+    private static let mutationLockRegistryLock = NSLock()
+    nonisolated(unsafe) private static var mutationLocksByDirectory: [String: NSLock] = [:]
 
     public init(stateDirectory: URL, fileManager: FileManager = .default) {
         self.stateDirectory = stateDirectory
@@ -62,14 +72,74 @@ public final class BridgeStateStore {
         self.fm = fileManager
     }
 
+    /// Runs one complete bridge mutation without another app/CLI process
+    /// loading the same state and later overwriting it with a stale copy.
+    func withExclusiveMutation<T>(_ operation: () throws -> T) throws -> T {
+        try fm.createDirectory(at: stateDirectory, withIntermediateDirectories: true)
+        let processLock = Self.mutationLock(for: stateDirectory)
+        processLock.lock()
+        defer { processLock.unlock() }
+
+        let lockURL = stateDirectory.appendingPathComponent(".bridge-state.lock")
+        let descriptor = Darwin.open(lockURL.path, O_CREAT | O_RDWR, S_IRUSR | S_IWUSR)
+        guard descriptor >= 0 else {
+            throw AgentSyncError.commandFailed("Could not open bridge-state lock at \(lockURL.path).")
+        }
+        defer { Darwin.close(descriptor) }
+
+        guard flock(descriptor, LOCK_EX) == 0 else {
+            throw AgentSyncError.commandFailed("Could not lock bridge state at \(stateDirectory.path).")
+        }
+        defer { flock(descriptor, LOCK_UN) }
+        return try operation()
+    }
+
+    private static func mutationLock(for stateDirectory: URL) -> NSLock {
+        // The directory exists before this is called, so resolving symlinks
+        // gives every spelling of the same state directory one registry key.
+        let key = stateDirectory.resolvingSymlinksInPath().standardizedFileURL.path
+        mutationLockRegistryLock.lock()
+        defer { mutationLockRegistryLock.unlock() }
+        if let existing = mutationLocksByDirectory[key] {
+            return existing
+        }
+        let created = NSLock()
+        mutationLocksByDirectory[key] = created
+        return created
+    }
+
     public func load() throws -> BridgeState {
+        try withExclusiveMutation {
+            try loadWhileLocked()
+        }
+    }
+
+    /// Loads, mutates, and saves bridge state under one app/CLI process lock.
+    public func withExclusiveStateMutation<T>(
+        _ operation: (inout BridgeState) throws -> T
+    ) throws -> T {
+        try withExclusiveMutation {
+            var state = try loadWhileLocked()
+            let result = try operation(&state)
+            try save(state)
+            return result
+        }
+    }
+
+    /// Caller must already hold `withExclusiveMutation`.
+    func loadWhileLocked() throws -> BridgeState {
         Self.migrationLock.lock()
         defer { Self.migrationLock.unlock() }
 
-        guard fm.fileExists(atPath: stateURL.path) else {
+        let readableStateURL: URL
+        if fm.fileExists(atPath: stateURL.path) {
+            readableStateURL = stateURL
+        } else if fm.fileExists(atPath: backupURL.path) {
+            readableStateURL = backupURL
+        } else {
             return .empty
         }
-        let data = try Data(contentsOf: stateURL)
+        let data = try Data(contentsOf: readableStateURL)
         let stored = try Self.decoder().decode(StoredState.self, from: data)
         let state = BridgeState(
             schemaVersion: 2,
@@ -101,9 +171,12 @@ public final class BridgeStateStore {
                 try fm.removeItem(at: backupURL)
             }
             try fm.copyItem(at: stateURL, to: backupURL)
-            try fm.removeItem(at: stateURL)
         }
-        try fm.moveItem(at: tmp, to: stateURL)
+        guard Darwin.rename(tmp.path, stateURL.path) == 0 else {
+            throw AgentSyncError.commandFailed(
+                "Could not atomically replace bridge state at \(stateURL.path) (errno \(errno))."
+            )
+        }
     }
 
     public func loadEvents(canonicalSessionID: String) throws -> [CanonicalEvent] {

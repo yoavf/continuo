@@ -9,6 +9,26 @@ public extension ClaudeAdapter {
         defaultModel: String,
         modelMappings: ModelMappingSettings? = nil
     ) throws -> MirrorRecord {
+        try renderReservingOwnership(
+            session: session,
+            targetSessionID: targetSessionID,
+            claudeHome: claudeHome,
+            existingMirror: existingMirror,
+            defaultModel: defaultModel,
+            modelMappings: modelMappings,
+            reserveOwnership: { _ in }
+        )
+    }
+
+    internal func renderReservingOwnership(
+        session: CanonicalSession,
+        targetSessionID: String,
+        claudeHome: URL,
+        existingMirror: MirrorRecord?,
+        defaultModel: String,
+        modelMappings: ModelMappingSettings?,
+        reserveOwnership: (MirrorRecord) throws -> Void
+    ) throws -> MirrorRecord {
         let now = Date()
         let projectName = PathEncoding.claudeProjectName(for: session.cwd)
         let transcriptURL = claudeHome
@@ -23,14 +43,7 @@ public extension ClaudeAdapter {
             modelMappings: modelMappings
         )
         let text = try LineJSON.renderObjects(rendered.objects)
-        try NativeFileWriter.writeAtomically(
-            text: text,
-            to: transcriptURL,
-            replacingExistingBridgeFile: existingMirror?.targetPath == transcriptURL.path,
-            allowedRoot: claudeHome
-        )
-
-        return MirrorRecord(
+        let mirror = MirrorRecord(
             canonicalSessionID: session.id,
             targetProvider: .claude,
             targetSessionID: targetSessionID,
@@ -42,6 +55,15 @@ public extension ClaudeAdapter {
             createdAt: existingMirror?.createdAt ?? now,
             updatedAt: now
         )
+        try reserveOwnership(mirror)
+        try NativeFileWriter.writeAtomically(
+            text: text,
+            to: transcriptURL,
+            replacingExistingBridgeFile: existingMirror?.targetPath == transcriptURL.path,
+            allowedRoot: claudeHome
+        )
+
+        return mirror
     }
 
     private func renderJSONL(

@@ -37,14 +37,18 @@ public final class SyncEngine {
             maximumSessions: configuration.maximumImportedSessions
         )
 
-        return try sync(importedSessions: importedClaude + importedCodex)
+        return try stateStore.withExclusiveMutation {
+            try sync(importedSessions: importedClaude + importedCodex)
+        }
     }
 
     public func syncSession(provider: AgentKind, sourcePath: String) throws -> SyncReport {
         guard let imported = try importSession(provider: provider, sourcePath: sourcePath) else {
             return .empty
         }
-        return try sync(importedSessions: [imported])
+        return try stateStore.withExclusiveMutation {
+            try sync(importedSessions: [imported])
+        }
     }
 
     public func currentState() throws -> BridgeState {
@@ -69,11 +73,22 @@ public final class SyncEngine {
         guard let imported = try importSession(provider: provider, sourcePath: sourcePath) else {
             throw AgentSyncError.invalidArguments("No conversation content found in \(sourcePath).")
         }
+        return try stateStore.withExclusiveMutation {
+            try prepareResume(imported: imported, provider: provider, target: target, mode: mode)
+        }
+    }
+
+    private func prepareResume(
+        imported: CanonicalSession,
+        provider: AgentKind,
+        target: AgentKind,
+        mode: ResumeMode
+    ) throws -> ResumeTicket {
         // Settle the canonical record first without rendering, so the mode
         // decision sees the merged transcript.
         _ = try sync(importedSessions: [imported], renderMirrors: false)
 
-        var state = try stateStore.load()
+        var state = try stateStore.loadWhileLocked()
         let nativeKey = BridgeState.nativeKey(provider: provider, sessionID: imported.sourceSessionID)
         guard let canonicalID = state.mirrorsByNativeSession[nativeKey]?.canonicalSessionID
             ?? state.canonicalByNativeSession[nativeKey] else {
@@ -121,7 +136,6 @@ public final class SyncEngine {
                 reuseExisting: false,
                 kind: .handoff
             )
-            try stateStore.save(state)
             return ResumeTicket(
                 targetProvider: target,
                 targetSessionID: mirror.targetSessionID,
@@ -143,7 +157,6 @@ public final class SyncEngine {
         }
 
         let mirror = try renderMirror(session: session, target: target, state: &state, reuseExisting: true)
-        try stateStore.save(state)
         return ResumeTicket(targetProvider: target, targetSessionID: mirror.targetSessionID, workingDirectory: cwd)
     }
 
@@ -170,50 +183,76 @@ public final class SyncEngine {
         reuseExisting: Bool,
         kind: MirrorKind = .full
     ) throws -> MirrorRecord {
-        let latest = reuseExisting
-            ? state.mirrorsByNativeSession.values
-                .filter { $0.canonicalSessionID == session.id && $0.targetProvider == target && $0.kind == kind }
+        let matching = state.mirrorsByNativeSession.values.filter {
+            $0.canonicalSessionID == session.id && $0.targetProvider == target && $0.kind == kind
+        }
+        let pending = matching
+            .filter(\.isPendingWrite)
+            .max { $0.updatedAt < $1.updatedAt }
+        let latestReusable = reuseExisting
+            ? matching
+                .filter { !$0.isPendingWrite && $0.importedNativeEventIDs.isEmpty }
                 .max { $0.updatedAt < $1.updatedAt }
             : nil
-        let existing = latest.flatMap { $0.importedNativeEventIDs.isEmpty ? $0 : nil }
+        let existing = pending ?? latestReusable
         let targetSessionID = existing?.targetSessionID ?? Self.newTargetSessionID(for: target)
+        var workingState = state
+        let reserveOwnership: (MirrorRecord) throws -> Void = { prepared in
+            guard existing == nil else {
+                return
+            }
+            var reservation = prepared
+            reservation.kind = kind
+            reservation.isPendingWrite = true
+            let key = BridgeState.nativeKey(
+                provider: reservation.targetProvider,
+                sessionID: reservation.targetSessionID
+            )
+            workingState.mirrorsByNativeSession[key] = reservation
+            try self.stateStore.save(workingState)
+        }
         var mirror: MirrorRecord
         switch target {
         case .claude:
-            mirror = try claude.render(
+            mirror = try claude.renderReservingOwnership(
                 session: session,
                 targetSessionID: targetSessionID,
                 claudeHome: configuration.claudeHome,
                 existingMirror: existing,
                 defaultModel: configuration.modelMappings.targetModel(for: session, targetProvider: .claude),
-                modelMappings: configuration.modelMappings
+                modelMappings: configuration.modelMappings,
+                reserveOwnership: reserveOwnership
             )
         case .codex:
-            mirror = try codex.render(
+            mirror = try codex.renderReservingOwnership(
                 session: session,
                 targetSessionID: targetSessionID,
                 codexHome: configuration.codexHome,
                 existingMirror: existing,
                 defaultModel: configuration.modelMappings.targetModel(for: session, targetProvider: .codex),
-                modelMappings: configuration.modelMappings
+                modelMappings: configuration.modelMappings,
+                reserveOwnership: reserveOwnership
             )
         case .opencode:
             // A configured resume model overrides both stamping and budgeting;
             // per-event mapping is skipped since one model was chosen.
             let configured = configuration.opencodeResumeModel
-            mirror = try opencode.render(
+            mirror = try opencode.renderReservingOwnership(
                 session: session,
                 targetSessionID: targetSessionID,
                 opencodeHome: configuration.opencodeHome,
                 existingMirror: existing,
                 defaultModel: configured ?? configuration.modelMappings.targetModel(for: session, targetProvider: .opencode),
                 modelMappings: configured == nil ? configuration.modelMappings : nil,
-                budgetModel: configured
+                budgetModel: configured,
+                reserveOwnership: reserveOwnership
             )
         }
         mirror.kind = kind
         let mirrorKey = BridgeState.nativeKey(provider: mirror.targetProvider, sessionID: mirror.targetSessionID)
-        state.mirrorsByNativeSession[mirrorKey] = mirror
+        workingState.mirrorsByNativeSession[mirrorKey] = mirror
+        try stateStore.save(workingState)
+        state = workingState
         return mirror
     }
 
@@ -230,7 +269,7 @@ public final class SyncEngine {
     }
 
     private func sync(importedSessions: [CanonicalSession], renderMirrors: Bool = true) throws -> SyncReport {
-        var state = try stateStore.load()
+        var state = try stateStore.loadWhileLocked()
         var report = SyncReport.empty
         var touchedCanonicalIDs = Set<String>()
 
@@ -289,6 +328,13 @@ public final class SyncEngine {
             report.importedSessions += 1
         }
 
+        // Canonical content must be durable before a native mirror can be
+        // reserved. A retry can then safely reuse a reserved target session.
+        for canonicalID in dirtyEventIDs {
+            try stateStore.saveEvents(eventsCache[canonicalID] ?? [], canonicalSessionID: canonicalID)
+        }
+        try stateStore.save(state)
+
         if renderMirrors {
             for summary in state.canonicalSessions.values
                 .filter({ touchedCanonicalIDs.contains($0.id) })
@@ -304,9 +350,6 @@ public final class SyncEngine {
             }
         }
 
-        for canonicalID in dirtyEventIDs {
-            try stateStore.saveEvents(eventsCache[canonicalID] ?? [], canonicalSessionID: canonicalID)
-        }
         try stateStore.save(state)
         return report
     }
