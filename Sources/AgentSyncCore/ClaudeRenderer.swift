@@ -74,6 +74,10 @@ public extension ClaudeAdapter {
             if isLegacyBridgeContextText(event.text) || isProviderLocalNoise(event.text) {
                 continue
             }
+            let renderedText = event.role == .assistant ? portableAssistantText(event.text) : event.text
+            if renderedText.isEmpty {
+                continue
+            }
             let uuid = UUID().uuidString.lowercased()
             switch event.role {
             case .assistant:
@@ -81,7 +85,7 @@ public extension ClaudeAdapter {
                 objects.append(claudeMessageObject(
                     type: "assistant",
                     role: "assistant",
-                    content: .array([.object(["type": .string("text"), "text": .string(event.text)])]),
+                    content: .array([.object(["type": .string("text"), "text": .string(renderedText)])]),
                     uuid: uuid,
                     parentUUID: parentUUID,
                     sessionID: targetSessionID,
@@ -95,7 +99,7 @@ public extension ClaudeAdapter {
                 objects.append(claudeMessageObject(
                     type: "user",
                     role: "user",
-                    content: .string(event.text),
+                    content: .string(renderedText),
                     uuid: uuid,
                     parentUUID: parentUUID,
                     sessionID: targetSessionID,

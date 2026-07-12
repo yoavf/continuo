@@ -79,7 +79,9 @@ public struct CodexAdapter: Sendable {
                     continue
                 }
                 let role = canonicalRole(fromCodexRole: roleString)
-                let text = boundedTranscriptText(extractCodexMessageText(payload), limit: 60_000)
+                let extractedText = extractCodexMessageText(payload)
+                let portableText = role == .assistant ? portableAssistantText(extractedText) : extractedText
+                let text = boundedTranscriptText(portableText, limit: 60_000)
                 guard !text.isEmpty, role == .assistant || !isProviderLocalNoise(text) else {
                     continue
                 }

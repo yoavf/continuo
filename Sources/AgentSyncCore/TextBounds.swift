@@ -13,6 +13,31 @@ func boundedTranscriptText(_ text: String, limit: Int = 20_000) -> String {
     """
 }
 
+/// Codex appends this machine-readable envelope to some assistant responses so
+/// its own UI can attribute memory use. It is not part of the conversation and
+/// has no meaning in another provider, so only remove a complete trailing
+/// envelope with the expected schema. Quoted or partial tags remain untouched.
+func portableAssistantText(_ text: String) -> String {
+    let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+    let openingTag = "<oai-mem-citation>"
+    let closingTag = "</oai-mem-citation>"
+    guard trimmed.hasSuffix(closingTag),
+          let opening = trimmed.range(of: openingTag, options: .backwards) else {
+        return text
+    }
+
+    let envelope = trimmed[opening.lowerBound...]
+    guard envelope.contains("<citation_entries>"),
+          envelope.contains("</citation_entries>"),
+          envelope.contains("<rollout_ids>"),
+          envelope.contains("</rollout_ids>") else {
+        return text
+    }
+
+    return String(trimmed[..<opening.lowerBound])
+        .trimmingCharacters(in: .whitespacesAndNewlines)
+}
+
 /// Two events with the same role, kind, timestamp, and text are the same turn
 /// regardless of which render minted their IDs. This is the dedupe key that
 /// keeps import/render round-trips from ever accumulating duplicates.

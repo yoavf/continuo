@@ -13,6 +13,8 @@ enum Prefs {
     static let codexTargetModelKey = "codexTargetModel"
     static let claudeTargetModelKey = "claudeTargetModel"
     static let preferredTerminalKey = "preferredTerminal"
+    static let codexLaunchDestinationKey = "codexLaunchDestination"
+    static let claudeLaunchDestinationKey = "claudeLaunchDestination"
     static let supersetV2EnabledKey = "supersetV2Enabled"
 
     static var production: AgentSyncConfiguration {
@@ -47,6 +49,16 @@ enum Prefs {
         resolvedTerminalPreference(
             UserDefaults.standard.string(forKey: preferredTerminalKey)
         )
+    }
+
+    static var codexLaunchDestination: CodexLaunchDestination {
+        UserDefaults.standard.string(forKey: codexLaunchDestinationKey)
+            .flatMap(CodexLaunchDestination.init(rawValue:)) ?? .cli
+    }
+
+    static var claudeLaunchDestination: ClaudeLaunchDestination {
+        UserDefaults.standard.string(forKey: claudeLaunchDestinationKey)
+            .flatMap(ClaudeLaunchDestination.init(rawValue:)) ?? .cli
     }
 
     static func resolvedTerminalPreference(_ rawValue: String?) -> TerminalApp {
@@ -476,6 +488,8 @@ final class AppModel: ObservableObject {
             return
         }
         let terminal = Prefs.preferredTerminal
+        let codexDestination = Prefs.codexLaunchDestination
+        let claudeDestination = Prefs.claudeLaunchDestination
         launchingID = item.id
         setStatus(.working("Preparing \(target.displayName) session…"))
         Prefs.setPrimaryTarget(target, for: item.preview.provider)
@@ -483,10 +497,17 @@ final class AppModel: ObservableObject {
 
         Task.detached(priority: .userInitiated) {
             let result = Result {
-                let preparation = try TerminalLauncher.preflight(
-                    terminal,
-                    workingDirectory: item.preview.cwd
-                )
+                let preparation: TerminalLaunchPreparation
+                if target == .codex, codexDestination == .chatGPTDesktop {
+                    preparation = .standard
+                } else if target == .claude, claudeDestination == .claudeDesktop {
+                    preparation = .standard
+                } else {
+                    preparation = try TerminalLauncher.preflight(
+                        terminal,
+                        workingDirectory: item.preview.cwd
+                    )
+                }
                 let engine = SyncEngine(configuration: configuration)
                 engine.handoffSummarizer = Intelligence.handoffSummary
                 let ticket = try engine.prepareResume(
@@ -498,6 +519,8 @@ final class AppModel: ObservableObject {
                 try TerminalLauncher.launch(
                     ticket,
                     using: terminal,
+                    codexDestination: codexDestination,
+                    claudeDestination: claudeDestination,
                     preparation: preparation
                 )
                 return ticket

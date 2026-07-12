@@ -27,6 +27,8 @@ private struct GeneralSettingsTab: View {
     @ObservedObject var model: AppModel
 
     @AppStorage(Prefs.preferredTerminalKey) private var preferredTerminal = TerminalApp.terminal.rawValue
+    @AppStorage(Prefs.codexLaunchDestinationKey) private var codexLaunchDestination = CodexLaunchDestination.cli.rawValue
+    @AppStorage(Prefs.claudeLaunchDestinationKey) private var claudeLaunchDestination = ClaudeLaunchDestination.cli.rawValue
     @AppStorage(Prefs.claudeHomeKey) private var claudeHomePath = Prefs.claudeHomePath
     @AppStorage(Prefs.codexHomeKey) private var codexHomePath = Prefs.codexHomePath
     @AppStorage(Prefs.opencodeHomeKey) private var opencodeHomePath = Prefs.opencodeHomePath
@@ -38,6 +40,7 @@ private struct GeneralSettingsTab: View {
     @State private var cmuxStatus = TerminalLauncher.cmuxConnectionStatus
     @State private var supersetStatus = TerminalLauncher.supersetConnectionStatus
     @State private var setupInstructionsTerminal: TerminalApp?
+    @State private var advancedExpanded = false
 
     var body: some View {
         Form {
@@ -51,12 +54,27 @@ private struct GeneralSettingsTab: View {
             }
 
             Section {
-                Picker("Open sessions in", selection: $preferredTerminal) {
+                Picker("Open Codex in", selection: $codexLaunchDestination) {
+                    ForEach(CodexLaunchDestination.allCases) { destination in
+                        Text(destination.displayName).tag(destination.rawValue)
+                    }
+                }
+                .pickerStyle(.menu)
+
+                Picker("Open Claude in", selection: $claudeLaunchDestination) {
+                    ForEach(ClaudeLaunchDestination.allCases) { destination in
+                        Text(destination.displayName).tag(destination.rawValue)
+                    }
+                }
+                .pickerStyle(.menu)
+
+                Picker("Terminal app", selection: $preferredTerminal) {
                     ForEach(TerminalApp.installed) { terminal in
                         Text(terminal.displayName).tag(terminal.rawValue)
                     }
                 }
                 .pickerStyle(.menu)
+
                 if preferredTerminal == TerminalApp.cmux.rawValue {
                     IntegrationStatusRow(title: cmuxStatus.title, isReady: cmuxStatus.isReady) {
                         setupInstructionsTerminal = .cmux
@@ -73,8 +91,12 @@ private struct GeneralSettingsTab: View {
                         supersetStatus = TerminalLauncher.supersetConnectionStatus
                     }
                 }
+            } header: {
+                Text("Opening")
             } footer: {
-                if preferredTerminal == TerminalApp.cmux.rawValue {
+                if codexLaunchDestination == CodexLaunchDestination.chatGPTDesktop.rawValue {
+                    Text("Desktop destinations open imported sessions in their app; CLI destinations use the terminal below.")
+                } else if preferredTerminal == TerminalApp.cmux.rawValue {
                     Text(
                         cmuxStatus.guidance
                             ?? "CMUX opens resumed sessions as named workspaces."
@@ -85,29 +107,35 @@ private struct GeneralSettingsTab: View {
                             ?? "Continuo opens resumed sessions in the matching Superset workspace, creating the project or workspace when needed."
                     )
                 } else {
-                    Text("Only installed terminals are listed.")
+                    Text("Choose which installed terminal runs CLI sessions.")
                 }
             }
 
             Section {
-                PathRow(title: "Claude Code home", path: $claudeHomePath, defaultPath: Prefs.production.claudeHome.path)
-                PathRow(title: "Codex home", path: $codexHomePath, defaultPath: Prefs.production.codexHome.path)
-                PathRow(title: "OpenCode data", path: $opencodeHomePath, defaultPath: Prefs.production.opencodeHome.path)
-                PathRow(title: "Bridge state", path: $stateDirectoryPath, defaultPath: Prefs.production.stateDirectory.path)
-            } footer: {
-                Text("Native transcripts are read-only inputs. Continuo writes only its own mirror files, tracked in bridge-state.json.")
-            }
+                DisclosureGroup(isExpanded: $advancedExpanded) {
+                    PathRow(title: "Claude Code home", path: $claudeHomePath, defaultPath: Prefs.production.claudeHome.path)
+                    PathRow(title: "Codex home", path: $codexHomePath, defaultPath: Prefs.production.codexHome.path)
+                    PathRow(title: "OpenCode data", path: $opencodeHomePath, defaultPath: Prefs.production.opencodeHome.path)
+                    PathRow(title: "Continuo data", path: $stateDirectoryPath, defaultPath: Prefs.production.stateDirectory.path)
 
-            Section {
-                LabeledContent("Install in /Applications") {
-                    Button("Install…") {
-                        installMessage = installInApplications()
+                    LabeledContent("Application") {
+                        Button("Install in /Applications…") {
+                            installMessage = installInApplications()
+                        }
                     }
+                    if let installMessage {
+                        Text(installMessage)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                } label: {
+                    Label("Storage & installation", systemImage: "folder")
                 }
-                if let installMessage {
-                    Text(installMessage)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
+            } footer: {
+                if advancedExpanded {
+                    Text("Locations are detected automatically. Native transcripts stay read-only; Continuo writes only its own mirrored sessions.")
+                } else {
+                    Text("Continuo detects session locations automatically.")
                 }
             }
         }

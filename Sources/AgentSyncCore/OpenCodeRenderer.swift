@@ -161,13 +161,17 @@ public extension OpenCodeAdapter {
             if isLegacyBridgeContextText(event.text) || isProviderLocalNoise(event.text) {
                 continue
             }
+            let renderedText = event.role == .assistant ? portableAssistantText(event.text) : event.text
+            if renderedText.isEmpty {
+                continue
+            }
             switch event.role {
             case .user, .developer, .system:
                 let message = appendMessage(
                     role: "user",
                     model: defaultModel,
                     timestamp: event.timestamp,
-                    parts: [.object(["type": .string("text"), "text": .string(event.text)])]
+                    parts: [.object(["type": .string("text"), "text": .string(renderedText)])]
                 )
                 nativeEventIDs.append("opencode:\(targetSessionID):\(message.id):0")
             case .assistant:
@@ -176,7 +180,7 @@ public extension OpenCodeAdapter {
                     role: "assistant",
                     model: model,
                     timestamp: event.timestamp,
-                    parts: [.object(["type": .string("text"), "text": .string(event.text)])]
+                    parts: [.object(["type": .string("text"), "text": .string(renderedText)])]
                 )
                 nativeEventIDs.append("opencode:\(targetSessionID):\(message.id):0")
             case .summary:

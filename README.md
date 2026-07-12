@@ -29,7 +29,7 @@ Recent sessions from `~/.claude` and `~/.codex` show up automatically. Click the
   <img src="docs/screenshots/continue.webp" width="440" alt="The continue panel: choose which agent to continue in and how much history to carry over">
 </p>
 
-Settings lets you point at custom homes, pick target models per direction, choose where sessions open, and toggle the hotkey.
+Settings lets you choose where Codex and Claude sessions open, select a terminal app for CLI sessions, pick target models per direction, and toggle the hotkey. Session folders are detected automatically; custom locations and installation controls stay tucked under **Storage & installation**.
 
 <p align="center">
   <img src="docs/screenshots/settings.webp" width="520" alt="Continuo settings: hotkey, session destination, and agent home locations">
@@ -37,8 +37,10 @@ Settings lets you point at custom homes, pick target models per direction, choos
 
 ### Supported session destinations
 
-A session destination can be a conventional terminal or a workspace environment. Continuo currently supports:
+A session destination can be a desktop agent, conventional terminal, or workspace environment. Continuo currently supports:
 
+- **ChatGPT Desktop (Codex)** — open the converted session directly as a local Codex task.
+- **Claude Desktop (Code)** — import the converted Claude Code session and open it in Claude Desktop.
 - **Terminal, iTerm2, and Ghostty** — open the resumed agent directly in a new terminal session.
 - **CMUX** — create a named workspace and run the resumed agent inside it. One-time password access must be enabled under CMUX → Settings → Automation.
 

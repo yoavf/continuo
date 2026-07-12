@@ -169,6 +169,27 @@ public struct ClaudeAdapter: Sendable {
                     )
                 case "tool_use":
                     let name = item.string("name") ?? "tool"
+                    if name == "AskUserQuestion",
+                       let input = item.object("input"),
+                       let questionText = renderClaudeQuestions(input) {
+                        var metadata: [String: JSONValue] = [
+                            "tool_name": .string(name),
+                            "interaction_type": .string("question")
+                        ]
+                        if let toolID = item.string("id") {
+                            metadata["tool_id"] = .string(toolID)
+                        }
+                        return CanonicalEvent(
+                            id: "\(baseID):question:\(itemIndex)",
+                            sourceProvider: .claude,
+                            sourceEventID: "\(uuid):question:\(itemIndex)",
+                            timestamp: timestamp,
+                            role: .assistant,
+                            kind: "question",
+                            text: questionText,
+                            metadata: metadata
+                        )
+                    }
                     let input = boundedTranscriptText(item["input"]?.prettyString() ?? "", limit: 12_000)
                     var metadata: [String: JSONValue] = ["tool_name": .string(name)]
                     // The native block id pairs this call with its result;
@@ -190,6 +211,25 @@ public struct ClaudeAdapter: Sendable {
                         metadata: metadata
                     )
                 case "tool_result":
+                    if let toolUseResult = envelope.object("toolUseResult"),
+                       let answerText = renderClaudeAnswers(toolUseResult) {
+                        var metadata: [String: JSONValue] = [
+                            "interaction_type": .string("answer")
+                        ]
+                        if let toolID = item.string("tool_use_id") {
+                            metadata["tool_id"] = .string(toolID)
+                        }
+                        return CanonicalEvent(
+                            id: "\(baseID):answer:\(itemIndex)",
+                            sourceProvider: .claude,
+                            sourceEventID: "\(uuid):answer:\(itemIndex)",
+                            timestamp: timestamp,
+                            role: .user,
+                            kind: "answer",
+                            text: answerText,
+                            metadata: metadata
+                        )
+                    }
                     let result = boundedTranscriptText(item["content"]?.prettyString() ?? "", limit: 20_000)
                     var metadata: [String: JSONValue] = [:]
                     if let toolID = item.string("tool_use_id") {
@@ -212,6 +252,72 @@ public struct ClaudeAdapter: Sendable {
         default:
             return []
         }
+    }
+}
+
+private func renderClaudeQuestions(_ input: [String: JSONValue]) -> String? {
+    guard let questions = input.array("questions") else {
+        return nil
+    }
+    let rendered = questions.compactMap { value -> String? in
+        guard let question = value.objectValue,
+              let prompt = question.string("question"),
+              !prompt.isEmpty else {
+            return nil
+        }
+        let header = question.string("header").flatMap { $0.isEmpty ? nil : $0 } ?? "Question"
+        var lines = ["[Question: \(header)]", prompt]
+        let options = question.array("options")?.compactMap { option -> String? in
+            guard let object = option.objectValue,
+                  let label = object.string("label"),
+                  !label.isEmpty else {
+                return nil
+            }
+            if let description = object.string("description"), !description.isEmpty {
+                return "- \(label) — \(description)"
+            }
+            return "- \(label)"
+        } ?? []
+        if !options.isEmpty {
+            lines.append("Options:")
+            lines.append(contentsOf: options)
+        }
+        return lines.joined(separator: "\n")
+    }
+    guard !rendered.isEmpty else {
+        return nil
+    }
+    return boundedTranscriptText(rendered.joined(separator: "\n\n"), limit: 20_000)
+}
+
+private func renderClaudeAnswers(_ toolUseResult: [String: JSONValue]) -> String? {
+    guard let questions = toolUseResult.array("questions"),
+          let answers = toolUseResult.object("answers") else {
+        return nil
+    }
+    let rendered = questions.compactMap { value -> String? in
+        guard let question = value.objectValue,
+              let prompt = question.string("question"),
+              let answer = answers[prompt] else {
+            return nil
+        }
+        let header = question.string("header").flatMap { $0.isEmpty ? nil : $0 } ?? "Answer"
+        return "[Answer: \(header)]\n\(plainClaudeAnswer(answer))"
+    }
+    guard !rendered.isEmpty else {
+        return nil
+    }
+    return boundedTranscriptText(rendered.joined(separator: "\n\n"), limit: 20_000)
+}
+
+private func plainClaudeAnswer(_ answer: JSONValue) -> String {
+    switch answer {
+    case .string(let value):
+        return value
+    case .array(let values):
+        return values.map(plainClaudeAnswer).joined(separator: ", ")
+    default:
+        return answer.prettyString()
     }
 }
 
@@ -263,4 +369,3 @@ func mappedModel(
     }
     return mappings.targetModel(forSourceModel: sourceModel, sourceProvider: event.sourceProvider, targetProvider: target)
 }
-

@@ -18,4 +18,11 @@ cp "$ROOT/Packaging/Continuo.icns" "$CONTENTS_DIR/Resources/Continuo.icns"
 cp -R "$ROOT/.build/$CONFIGURATION/agent-sync_AgentSyncCore.bundle" "$CONTENTS_DIR/Resources/" 2>/dev/null || true
 cp -R "$ROOT/.build/$CONFIGURATION/agent-sync_AgentSyncApp.bundle" "$CONTENTS_DIR/Resources/" 2>/dev/null || true
 
+# Swift signs the standalone executable while linking, before the finished app
+# bundle and its resources exist. Re-sign the assembled bundle so even local
+# and unsigned packages have a coherent resource seal. Release/preview signing
+# replaces this ad-hoc signature with Developer ID afterwards.
+codesign --force --deep --sign - "$APP_DIR"
+codesign --verify --deep --strict "$APP_DIR"
+
 echo "$APP_DIR"

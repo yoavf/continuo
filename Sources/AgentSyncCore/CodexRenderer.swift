@@ -119,6 +119,10 @@ public extension CodexAdapter {
             if isLegacyBridgeContextText(event.text) || isProviderLocalNoise(event.text) {
                 continue
             }
+            let renderedText = event.role == .assistant ? portableAssistantText(event.text) : event.text
+            if renderedText.isEmpty {
+                continue
+            }
             let nativeMessageID = "agent_sync_\(UUID().uuidString.replacingOccurrences(of: "-", with: ""))"
             // Recorded ids must match what CodexAdapter derives on re-import
             // (call_id-based for tool events), or the echo guard misses them.
@@ -166,7 +170,7 @@ public extension CodexAdapter {
                         "role": .string(role),
                         "content": .array([.object([
                             "type": .string(itemType),
-                            "text": .string(event.text)
+                            "text": .string(renderedText)
                         ])])
                     ]
                 ))
@@ -179,7 +183,7 @@ public extension CodexAdapter {
                         "timestamp": .string(DateCoding.render(event.timestamp)),
                         "payload": .object([
                             "type": .string("agent_message"),
-                            "message": .string(event.text)
+                            "message": .string(renderedText)
                         ])
                     ])
                 } else if event.role == .user {
@@ -188,7 +192,7 @@ public extension CodexAdapter {
                         "timestamp": .string(DateCoding.render(event.timestamp)),
                         "payload": .object([
                             "type": .string("user_message"),
-                            "message": .string(event.text),
+                            "message": .string(renderedText),
                             "images": .array([]),
                             "local_images": .array([]),
                             "text_elements": .array([])
