@@ -106,6 +106,7 @@
   .btn.ghost { background: transparent; color: var(--ink); border: 1.5px solid rgba(20,22,26,0.22); box-shadow: none; }
   .btn.ghost:hover { border-color: var(--ink); box-shadow: none; }
   .btn.ghost .star { color: #e0a11a; }
+  .btn-version { margin-left: 0.18em; font-size: 0.72em; font-weight: 500; opacity: 0.68; vertical-align: 0.08em; }
   .meta { font-family: ui-sans-serif, -apple-system, sans-serif; font-size: 13px; color: var(--ink-soft); }
   .orsep { font-family: ui-sans-serif, -apple-system, sans-serif; font-size: 14px; color: var(--ink-soft); }
   .brew {
@@ -216,7 +217,7 @@
       <h1>Start in one coding agent,<br>finish in another.</h1>
       <p class="sub">Claude&nbsp;Code, Codex, and OpenCode — start in one, and resume in another. Continuo converts the session into the target agent's native format and opens it right where you left off.</p>
       <div class="btnrow">
-        <a class="btn" href="https://github.com/yoavf/continuo/releases/latest/download/Continuo.dmg">Download for macOS</a>
+        <a class="btn" href="https://github.com/yoavf/continuo/releases/latest/download/Continuo.dmg">Download for macOS <span class="btn-version" data-release-version>(v0.2.2)</span></a>
         <span class="orsep">or</span>
         <code class="brew">brew install --cask yoavf/tap/continuo</code>
       </div>
@@ -238,6 +239,17 @@
 
   <script async defer src="https://buttons.github.io/buttons.js"></script>
   <script>
+  fetch('https://api.github.com/repos/yoavf/continuo/releases/latest', {
+    headers: { Accept: 'application/vnd.github+json' }
+  })
+    .then(function (response) { return response.ok ? response.json() : Promise.reject(); })
+    .then(function (release) {
+      if (release.tag_name) {
+        document.querySelector('[data-release-version]').textContent = '(' + release.tag_name + ')';
+      }
+    })
+    .catch(function () {});
+
   (function () {
     var cars = document.querySelectorAll('.car');
     var paintCar = document.querySelector('.carlayer.paint .car');
