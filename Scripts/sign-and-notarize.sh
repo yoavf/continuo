@@ -31,11 +31,20 @@ notarize() {
         --wait
 }
 
-# Sign with a hardened runtime (required for notarization). The nested
-# SwiftPM resource bundles carry only data (no Mach-O), so they aren't signed
-# separately — the app signature seals them as resources.
+# Sparkle contains nested updater executables. Because this repo packages the
+# app without Xcode's Archive/Export flow, sign them from the inside out using
+# Sparkle's documented order before sealing the framework and host app.
+SPARKLE="$APP/Contents/Frameworks/Sparkle.framework"
+if [ -d "$SPARKLE" ]; then
+    codesign --force --options runtime --timestamp --sign "$SIGNING_IDENTITY" "$SPARKLE/Versions/B/Autoupdate"
+    codesign --force --options runtime --timestamp --sign "$SIGNING_IDENTITY" "$SPARKLE/Versions/B/Updater.app"
+    codesign --force --options runtime --timestamp --sign "$SIGNING_IDENTITY" "$SPARKLE"
+fi
+
+# Sign the host with a hardened runtime (required for notarization). The
+# SwiftPM resource bundles carry only data and are sealed as resources.
 codesign --force --options runtime --timestamp --sign "$SIGNING_IDENTITY" "$APP"
-codesign --verify --strict --verbose=2 "$APP"
+codesign --verify --deep --strict --verbose=2 "$APP"
 
 # Notarize + staple the app so it validates wherever it's copied out to.
 /usr/bin/ditto -c -k --keepParent "$APP" "$ZIP"

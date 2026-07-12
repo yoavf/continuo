@@ -1,5 +1,6 @@
 import AgentSyncCore
 import AppKit
+import Sparkle
 import SwiftUI
 
 /// Drives the menu bar with an AppKit `NSStatusItem` rather than SwiftUI's
@@ -16,6 +17,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private let popover = NSPopover()
     private var settingsWindow: NSWindow?
     private let model = AppModel.shared
+    private lazy var updaterController = SPUStandardUpdaterController(
+        startingUpdater: true,
+        updaterDelegate: nil,
+        userDriverDelegate: nil
+    )
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         if let shotsDir = ProcessInfo.processInfo.environment["CONTINUO_SHOTS"] {
@@ -23,6 +29,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             return
         }
         Self.instance = self
+        _ = updaterController
         SplashWindow.show()
 
         let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
@@ -59,6 +66,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// a status-item popover on macOS 26, so host the settings view directly.
     static func openSettings() {
         instance?.showSettings()
+    }
+
+    static func checkForUpdates() {
+        instance?.updaterController.checkForUpdates(nil)
     }
 
     private func showSettings() {

@@ -78,6 +78,17 @@ jobs:
           AC_API_KEY_PATH: ${{ runner.temp }}/AuthKey.p8
         run: ./Scripts/sign-and-notarize.sh
 
+      - name: Generate signed update feed
+        if: >-
+          github.event_name == 'pull_request' &&
+          github.event.pull_request.head.repo.full_name == github.repository &&
+          github.event.pull_request.user.login == github.repository_owner
+        env:
+          SPARKLE_ED_PRIVATE_KEY: ${{ secrets.SPARKLE_ED_PRIVATE_KEY }}
+        run: |
+          VERSION="$(/usr/bin/plutil -extract CFBundleShortVersionString raw dist/Continuo.app/Contents/Info.plist)"
+          ./Scripts/generate-appcast.sh "v$VERSION"
+
       - name: Upload preview app
         if: >-
           github.event_name == 'pull_request' &&
@@ -87,7 +98,9 @@ jobs:
         uses: actions/upload-artifact@v7
         with:
           name: Continuo-preview-${{ github.event.pull_request.number || github.run_number }}
-          path: dist/Continuo.dmg
+          path: |
+            dist/Continuo.dmg
+            dist/appcast.xml
           retention-days: 7
           if-no-files-found: error
 

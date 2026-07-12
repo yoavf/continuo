@@ -31,6 +31,8 @@ Recent sessions from `~/.claude` and `~/.codex` show up automatically. Click the
 
 Settings lets you choose where Codex and Claude sessions open, select a terminal app for CLI sessions, pick target models per direction, and toggle the hotkey. Session folders are detected automatically; custom locations and installation controls stay tucked under **Storage & installation**.
 
+Continuo checks GitHub Releases for cryptographically signed updates using Sparkle. You can check manually from Settings; Sparkle offers background checks using its standard macOS opt-in prompt.
+
 <p align="center">
   <img src="docs/screenshots/settings.webp" width="520" alt="Continuo settings: hotkey, session destination, and agent home locations">
 </p>

@@ -26,5 +26,9 @@
     <true/>
     <key>NSPrincipalClass</key>
     <string>NSApplication</string>
+    <key>SUFeedURL</key>
+    <string>https://github.com/yoavf/continuo/releases/latest/download/appcast.xml</string>
+    <key>SUPublicEDKey</key>
+    <string>PVALYCLREeUlIy5caIjO5d6cP/FfG7e1B/P/wc/juEE=</string>
 </dict>
 </plist>
