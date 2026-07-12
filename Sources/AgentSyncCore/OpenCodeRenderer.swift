@@ -15,6 +15,28 @@ public extension OpenCodeAdapter {
         modelMappings: ModelMappingSettings? = nil,
         budgetModel explicitBudgetModel: String? = nil
     ) throws -> MirrorRecord {
+        try renderReservingOwnership(
+            session: session,
+            targetSessionID: targetSessionID,
+            opencodeHome: opencodeHome,
+            existingMirror: existingMirror,
+            defaultModel: defaultModel,
+            modelMappings: modelMappings,
+            budgetModel: explicitBudgetModel,
+            reserveOwnership: { _ in }
+        )
+    }
+
+    internal func renderReservingOwnership(
+        session: CanonicalSession,
+        targetSessionID: String,
+        opencodeHome: URL,
+        existingMirror: MirrorRecord?,
+        defaultModel: String,
+        modelMappings: ModelMappingSettings?,
+        budgetModel explicitBudgetModel: String?,
+        reserveOwnership: (MirrorRecord) throws -> Void
+    ) throws -> MirrorRecord {
         let now = Date()
         let database = Self.databaseURL(opencodeHome: opencodeHome)
         guard FileManager.default.fileExists(atPath: database.path) else {
@@ -38,16 +60,7 @@ public extension OpenCodeAdapter {
         try data.write(to: tempURL, options: [.atomic])
         defer { try? FileManager.default.removeItem(at: tempURL) }
 
-        if existingMirror != nil {
-            // Bridge-owned session: clear it so import can't leave stale rows.
-            try OpenCodeSQL.execute(
-                database: database,
-                sql: "DELETE FROM session WHERE id = \(OpenCodeSQL.quote(targetSessionID));"
-            )
-        }
-        try Self.runImport(file: tempURL, expectedSessionID: targetSessionID, workingDirectory: session.cwd)
-
-        return MirrorRecord(
+        let mirror = MirrorRecord(
             canonicalSessionID: session.id,
             targetProvider: .opencode,
             targetSessionID: targetSessionID,
@@ -59,6 +72,18 @@ public extension OpenCodeAdapter {
             createdAt: existingMirror?.createdAt ?? now,
             updatedAt: now
         )
+        try reserveOwnership(mirror)
+
+        if existingMirror != nil {
+            // Bridge-owned session: clear it so import can't leave stale rows.
+            try OpenCodeSQL.execute(
+                database: database,
+                sql: "DELETE FROM session WHERE id = \(OpenCodeSQL.quote(targetSessionID));"
+            )
+        }
+        try Self.runImport(file: tempURL, expectedSessionID: targetSessionID, workingDirectory: session.cwd)
+
+        return mirror
     }
 
     func buildExport(

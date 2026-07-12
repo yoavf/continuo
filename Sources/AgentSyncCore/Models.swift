@@ -153,6 +153,10 @@ public struct MirrorRecord: Codable, Equatable, Identifiable, Sendable {
     public var rendererVersion: Int
     public var renderedNativeEventIDs: [String]
     public var importedNativeEventIDs: [String]
+    /// True only between reserving a brand-new native session and completing
+    /// its first write. Retries reuse this reservation instead of minting a
+    /// second session.
+    public var isPendingWrite: Bool
     /// A full render must never hijack a handoff mirror (or vice versa); each
     /// kind reuses only its own.
     public var kind: MirrorKind
@@ -168,6 +172,7 @@ public struct MirrorRecord: Codable, Equatable, Identifiable, Sendable {
         rendererVersion: Int,
         renderedNativeEventIDs: [String] = [],
         importedNativeEventIDs: [String] = [],
+        isPendingWrite: Bool = false,
         kind: MirrorKind = .full,
         createdAt: Date,
         updatedAt: Date
@@ -180,6 +185,7 @@ public struct MirrorRecord: Codable, Equatable, Identifiable, Sendable {
         self.rendererVersion = rendererVersion
         self.renderedNativeEventIDs = renderedNativeEventIDs
         self.importedNativeEventIDs = importedNativeEventIDs
+        self.isPendingWrite = isPendingWrite
         self.kind = kind
         self.createdAt = createdAt
         self.updatedAt = updatedAt
@@ -194,6 +200,7 @@ public struct MirrorRecord: Codable, Equatable, Identifiable, Sendable {
         case rendererVersion
         case renderedNativeEventIDs
         case importedNativeEventIDs
+        case isPendingWrite
         case kind
         case createdAt
         case updatedAt
@@ -209,6 +216,7 @@ public struct MirrorRecord: Codable, Equatable, Identifiable, Sendable {
         self.rendererVersion = try container.decode(Int.self, forKey: .rendererVersion)
         self.renderedNativeEventIDs = try container.decodeIfPresent([String].self, forKey: .renderedNativeEventIDs) ?? []
         self.importedNativeEventIDs = try container.decodeIfPresent([String].self, forKey: .importedNativeEventIDs) ?? []
+        self.isPendingWrite = try container.decodeIfPresent(Bool.self, forKey: .isPendingWrite) ?? false
         self.kind = try container.decodeIfPresent(MirrorKind.self, forKey: .kind) ?? .full
         self.createdAt = try container.decode(Date.self, forKey: .createdAt)
         self.updatedAt = try container.decode(Date.self, forKey: .updatedAt)
