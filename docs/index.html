@@ -91,11 +91,34 @@
   }
   .wordmark { display: block; width: 360px; max-width: 82vw; height: auto; margin-bottom: 4px; }
   h1 { font-size: clamp(26px, 3.6vw, 42px); font-weight: 600; line-height: 1.12; letter-spacing: -0.01em; max-width: 640px; }
+  .compatibility {
+    display: flex; align-items: center; justify-content: center; gap: 12px;
+    font-family: ui-sans-serif, -apple-system, "Helvetica Neue", sans-serif;
+  }
+  .compatibility-label {
+    font-size: 10px; font-weight: 700; letter-spacing: 0.09em;
+    text-transform: uppercase; color: var(--ink-soft); white-space: nowrap;
+  }
+  .compatibility-products { display: flex; align-items: center; justify-content: center; gap: 14px; }
+  .compatibility-product {
+    position: relative; display: inline-flex; align-items: center; gap: 6px;
+    font-size: 13px; font-weight: 600; color: #35373a; white-space: nowrap;
+  }
+  .compatibility-product + .compatibility-product::before {
+    content: ""; position: absolute; left: -7px; width: 1px; height: 18px;
+    background: rgba(104,68,38,0.26);
+  }
+  .compatibility-icon {
+    width: 20px; height: 20px; display: grid; place-items: center; flex: 0 0 auto;
+  }
+  .compatibility-icon img { display: block; width: 18px; height: 18px; object-fit: contain; }
+  .compatibility-product.codex .compatibility-icon img { width: 19px; height: 19px; }
   .sub {
     font-family: ui-sans-serif, -apple-system, "Helvetica Neue", sans-serif;
     font-size: 17px; line-height: 1.75; color: #4c4e52; max-width: 548px;
   }
   .btnrow { display: flex; gap: 12px; flex-wrap: wrap; align-items: center; justify-content: center; margin-top: 6px; }
+  .alt-install { display: flex; gap: 12px; align-items: center; justify-content: center; }
   .btn {
     display: inline-block; background: var(--accent); color: #fff;
     font-family: ui-sans-serif, -apple-system, sans-serif; font-size: 17px; font-weight: 600; text-decoration: none;
@@ -109,9 +132,11 @@
   .btn-version { margin-left: 0.18em; font-size: 0.72em; font-weight: 500; opacity: 0.68; vertical-align: 0.08em; }
   .meta { font-family: ui-sans-serif, -apple-system, sans-serif; font-size: 13px; color: var(--ink-soft); }
   .orsep { font-family: ui-sans-serif, -apple-system, sans-serif; font-size: 14px; color: var(--ink-soft); }
+  .orsep-mobile { display: none; }
   .brew {
-    display: inline-block; background: rgba(120,70,20,0.09); border: 1px solid var(--line); border-radius: 9px;
-    padding: 8px 13px; font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: 13px; color: var(--ink); user-select: all;
+    display: inline-block; background: transparent; border: 0; border-bottom: 1px solid rgba(104,68,38,0.3); border-radius: 0;
+    padding: 8px 4px 7px; font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: 13px; color: #2f2117; user-select: all;
+    box-shadow: none;
   }
 
   .github-button { line-height: 0; }
@@ -126,6 +151,7 @@
   /* how it works — scroll-down section */
   html { scroll-behavior: smooth; }
   .hiw-link { margin-top: 12px; display: inline-block; font-family: ui-sans-serif,-apple-system,sans-serif; font-size: 14px; font-weight: 600; color: var(--sepia); text-decoration: none; border-bottom: 1.5px solid var(--line); padding-bottom: 2px; }
+  .hiw-arrow { display: inline-block; margin-left: 5px; font-size: 1.35em; font-weight: 800; line-height: 0; color: #713913; transform: translateY(1px); }
   .hiw-link:hover { border-bottom-color: var(--sepia); }
   .hiw { position: relative; z-index: 6; background: #fbf4e7; padding: 78px 28px 96px; min-height: 100vh; display: flex; flex-direction: column; justify-content: center; }
   .hiw h2 { text-align: center; font-family: ui-sans-serif,-apple-system,sans-serif; font-size: 14px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: var(--ink-soft); margin: 0 0 38px; }
@@ -143,19 +169,78 @@
   .feedback a { color: var(--sepia); font-weight: 600; text-decoration: none; border-bottom: 1px solid rgba(138,74,30,0.34); }
   .feedback a:hover { border-bottom-color: var(--sepia); }
   @media (max-width: 700px) {
-    .hiw-steps { gap: 48px; }
+    .hiw-steps { gap: 44px; }
     .primary-step { grid-template-columns: 1fr; gap: 18px; }
     .continue-step img { grid-column: 1; grid-row: 1; }
     .continue-step figcaption { grid-column: 1; grid-row: 2; }
-    .primary-step figcaption { font-size: 26px; }
+    .primary-step figcaption { font-size: 22px; line-height: 1.16; letter-spacing: -0.01em; }
     .settings-step { grid-template-columns: 1fr; width: 100%; }
-    .feedback { margin-top: 48px; }
-    .hiw { padding: 56px 22px 72px; }
+    .feedback { margin-top: 44px; font-size: 13px; line-height: 1.5; }
+    .feedback a { display: block; width: fit-content; margin: 6px auto 0; }
+    .hiw { padding: 48px 20px 64px; }
+    .hiw h2 { margin-bottom: 30px; }
   }
-  /* mobile hero: spread the content instead of bunching it in the middle */
+  /* Mobile hero: a deliberate reading sequence, with the supporting links
+     resting in the quiet space below the bridge. */
   @media (max-width: 640px) {
-    .content { transform: none; justify-content: flex-start; min-height: 100vh; padding: 7vh 22px 16vh; gap: 18px; }
-    .content .meta { margin-top: auto; color: #4c4e52; }
+    .hero { min-height: 100svh; }
+    .hero::after { background: radial-gradient(520px 390px at 50% 33%, rgba(244,236,219,0.9), rgba(244,236,219,0) 74%); }
+    .content {
+      width: 100%; min-height: 100svh; transform: none; justify-content: flex-start;
+      padding: clamp(44px, 7svh, 60px) 20px clamp(88px, 12svh, 108px); gap: 0;
+    }
+    .wordmark { width: min(76vw, 300px); margin: 0 0 22px; }
+    h1 { max-width: 350px; margin-bottom: 20px; font-size: 25px; line-height: 1.08; letter-spacing: -0.018em; }
+    .compatibility { flex-direction: column; gap: 7px; margin-bottom: 18px; }
+    .compatibility-products { gap: 12px; }
+    .compatibility-product { font-size: 11px; gap: 5px; }
+    .compatibility-icon { width: 17px; height: 17px; }
+    .compatibility-icon img { width: 15px; height: 15px; }
+    .compatibility-product.codex .compatibility-icon img { width: 16px; height: 16px; }
+    .sub { width: min(100%, 330px); max-width: none; margin-bottom: 24px; font-size: 14.5px; line-height: 1.55; text-align: center; }
+    .btnrow { width: 100%; margin-top: 0; flex-direction: column; flex-wrap: nowrap; gap: 13px; }
+    .btn { width: min(100%, 320px); padding: 13px 18px; font-size: 16px; }
+    .alt-install { position: relative; isolation: isolate; width: 100%; flex-direction: column; gap: 8px; }
+    .alt-install::before {
+      content: ""; position: absolute; z-index: -1; pointer-events: none;
+      left: 50%; top: 0; width: 100vw; height: clamp(120px, 16svh, 150px); transform: translateX(-50%);
+      background: radial-gradient(ellipse at 50% 30%, rgba(244,236,219,0.5), rgba(244,236,219,0.28) 58%, rgba(244,236,219,0) 88%);
+    }
+    .orsep {
+      width: min(100%, 320px); display: flex; align-items: center; gap: 10px;
+      font-size: 11px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase;
+    }
+    .orsep-desktop { display: none; }
+    .orsep-mobile { display: inline; }
+    .orsep::before { content: ""; height: 1px; flex: 1; background: rgba(104,68,38,0.28); }
+    .orsep::after { content: ""; height: 1px; flex: 1; background: rgba(104,68,38,0.28); }
+    .alt-install::after { content: ""; width: min(100%, 320px); height: 1px; background: rgba(104,68,38,0.28); }
+    .brew {
+      max-width: 100%; padding: 7px 4px; font-size: 10.5px; line-height: 1.25; border: 0; background: transparent;
+      text-shadow: 0 1px rgba(251,244,231,0.95), 0 0 9px rgba(251,244,231,0.95);
+    }
+    .content .meta { position: relative; isolation: isolate; margin-top: auto; color: #3f4145; font-size: 12.5px; font-weight: 500; }
+    .content .meta::before {
+      content: ""; position: absolute; z-index: -1; pointer-events: none;
+      left: 50%; top: -18px; width: min(76vw, 280px); height: 86px; transform: translateX(-50%);
+      background: radial-gradient(ellipse, rgba(244,236,219,0.5), rgba(244,236,219,0.28) 60%, rgba(244,236,219,0) 86%);
+    }
+    .hiw-link { margin-top: 10px; font-size: 13px; }
+    .attribution {
+      left: 0; right: 0; bottom: 0; transform: none;
+      display: flex; min-height: 52px; align-items: flex-end; justify-content: center; padding: 0 20px 13px;
+      font-size: 12px; letter-spacing: 0.025em; color: rgba(255,249,239,0.92);
+      background: linear-gradient(to top, rgba(23,24,26,0.58), rgba(23,24,26,0));
+      border: 0; border-radius: 0; box-shadow: none;
+    }
+    .attribution a { margin-left: 0.28em; color: #efb274; border-bottom-color: rgba(239,178,116,0.52); }
+  }
+  @media (max-width: 640px) and (min-height: 800px) {
+    .wordmark { margin-bottom: 28px; }
+    h1 { margin-bottom: 28px; }
+    .compatibility { gap: 9px; margin-bottom: 28px; }
+    .sub { margin-bottom: 32px; line-height: 1.6; }
+    .btnrow { gap: 16px; }
   }
 </style>
 </head>
@@ -215,14 +300,24 @@
     <div class="content">
       <img class="wordmark" src="wordmark.webp" alt="Continuo">
       <h1>Start in one coding agent,<br>finish in another.</h1>
-      <p class="sub">Claude&nbsp;Code, Codex, and OpenCode — start in one, and resume in another. Continuo converts the session into the target agent's native format and opens it right where you left off.</p>
+      <div class="compatibility" aria-label="Works with Claude Code, Codex, and OpenCode">
+        <span class="compatibility-label">Works with</span>
+        <div class="compatibility-products" aria-hidden="true">
+          <span class="compatibility-product"><span class="compatibility-icon"><img src="brands/claude.ico" alt=""></span>Claude Code</span>
+          <span class="compatibility-product codex"><span class="compatibility-icon"><img src="brands/codex.svg" alt=""></span>Codex</span>
+          <span class="compatibility-product"><span class="compatibility-icon"><img src="brands/opencode.png" alt=""></span>OpenCode</span>
+        </div>
+      </div>
+      <p class="sub">Start in one, and resume in another. Continuo converts the session into the target agent's native format and opens it right where you&nbsp;left&nbsp;off.</p>
       <div class="btnrow">
         <a class="btn" href="https://github.com/yoavf/continuo/releases/latest/download/Continuo.dmg">Download for macOS <span class="btn-version" data-release-version>(v0.2.2)</span></a>
-        <span class="orsep">or</span>
-        <code class="brew">brew install --cask yoavf/tap/continuo</code>
+        <div class="alt-install">
+          <span class="orsep"><span class="orsep-desktop">or</span><span class="orsep-mobile">or install with Homebrew</span></span>
+          <code class="brew">brew install --cask yoavf/tap/continuo</code>
+        </div>
       </div>
       <div class="meta">Free &amp; open source</div>
-      <a class="hiw-link" href="#hiw">See how it works ↓</a>
+      <a class="hiw-link" href="#hiw">See how it works <span class="hiw-arrow" aria-hidden="true">↓</span></a>
     </div>
     <div class="attribution">A bridge built by <a href="https://x.com/yoavf">@yoavf</a></div>
   </main>
