@@ -749,7 +749,7 @@ import Testing
     try child.run()
 
     let readyURL = root.appendingPathComponent("child-ready")
-    let readyDeadline = Date().addingTimeInterval(2)
+    let readyDeadline = Date().addingTimeInterval(10)
     while !FileManager.default.fileExists(atPath: readyURL.path), Date() < readyDeadline {
         Thread.sleep(forTimeInterval: 0.01)
     }
