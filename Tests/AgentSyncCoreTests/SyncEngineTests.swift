@@ -779,6 +779,74 @@ import Testing
     #expect(!rendered.contains("\"name\":\"AskUserQuestion\""))
 }
 
+@Test func codexMemoryCitationEnvelopeIsNotRenderedIntoClaude() throws {
+    let root = URL(fileURLWithPath: NSTemporaryDirectory(), isDirectory: true)
+        .appendingPathComponent("continuo-codex-private-metadata-\(UUID().uuidString.lowercased())", isDirectory: true)
+    defer { try? FileManager.default.removeItem(at: root) }
+    try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+
+    let source = root.appendingPathComponent("11111111-1111-4111-8111-111111111111.jsonl")
+    let visibleText = "Fixed and pushed to the draft PR."
+    let assistantText = """
+    \(visibleText)
+
+    <oai-mem-citation>
+    <citation_entries>
+    MEMORY.md:215-226|note=[bridge context]
+    </citation_entries>
+    <rollout_ids>
+    019f38eb-90d6-7421-b09f-5dda60de3d37
+    </rollout_ids>
+    </oai-mem-citation>
+    """
+    let objects: [[String: JSONValue]] = [
+        [
+            "type": .string("session_meta"),
+            "timestamp": .string("2026-07-11T20:50:00.000Z"),
+            "payload": .object([
+                "id": .string("11111111-1111-4111-8111-111111111111"),
+                "cwd": .string(root.path)
+            ])
+        ],
+        [
+            "type": .string("response_item"),
+            "timestamp": .string("2026-07-11T20:52:11.817Z"),
+            "payload": .object([
+                "type": .string("message"),
+                "id": .string("assistant-final"),
+                "role": .string("assistant"),
+                "content": .array([.object([
+                    "type": .string("output_text"),
+                    "text": .string(assistantText)
+                ])])
+            ])
+        ]
+    ]
+    try Data(try LineJSON.renderObjects(objects).utf8).write(to: source)
+
+    var session = try #require(try CodexAdapter().importSession(from: source))
+    let assistant = try #require(session.events.first { $0.role == .assistant })
+    #expect(assistant.text == visibleText)
+
+    // Render-side defense also repairs canonical events cached by an older
+    // Continuo build before import-side filtering existed.
+    let assistantIndex = try #require(session.events.firstIndex { $0.role == .assistant })
+    session.events[assistantIndex].text = assistantText
+
+    let claudeHome = root.appendingPathComponent("claude", isDirectory: true)
+    let mirror = try ClaudeAdapter().render(
+        session: session,
+        targetSessionID: "22222222-2222-4222-8222-222222222222",
+        claudeHome: claudeHome,
+        existingMirror: nil,
+        defaultModel: "claude-fable-5"
+    )
+    let rendered = try String(contentsOfFile: mirror.targetPath, encoding: .utf8)
+    #expect(rendered.contains(visibleText))
+    #expect(!rendered.contains("oai-mem-citation"))
+    #expect(!rendered.contains("MEMORY.md:215-226"))
+}
+
 private func findOnlyCodexSource(in codexHome: URL) -> URL {
     let sessions = codexHome.appendingPathComponent("sessions", isDirectory: true)
     let paths = (try? FileManager.default.subpathsOfDirectory(atPath: sessions.path)) ?? []
