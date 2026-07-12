@@ -33,6 +33,10 @@ enum Screenshots {
         UserDefaults.standard.set("~/.codex", forKey: Prefs.codexHomeKey)
         UserDefaults.standard.set("~/.local/share/opencode", forKey: Prefs.opencodeHomeKey)
         UserDefaults.standard.set("~/Library/Application Support/AgentSync", forKey: Prefs.stateDirectoryKey)
+        UserDefaults.standard.set(
+            CodexLaunchDestination.chatGPTDesktop.rawValue,
+            forKey: Prefs.codexLaunchDestinationKey
+        )
 
         model.sessions = demoSessions()
         model.observedModels = [
