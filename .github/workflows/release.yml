@@ -90,3 +90,26 @@ jobs:
           gh release create "$GITHUB_REF_NAME" dist/Continuo.dmg dist/appcast.xml \
             --title "Continuo $GITHUB_REF_NAME" \
             --generate-notes
+
+      - name: Bump Homebrew cask
+        if: startsWith(github.ref, 'refs/tags/v')
+        env:
+          HOMEBREW_TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+        run: |
+          : "${HOMEBREW_TAP_TOKEN:?HOMEBREW_TAP_TOKEN secret is required (fine-grained PAT with contents:write on yoavf/homebrew-tap)}"
+
+          VERSION="${GITHUB_REF_NAME#v}"
+          SHA256="$(shasum -a 256 dist/Continuo.dmg | awk '{print $1}')"
+
+          git clone "https://x-access-token:${HOMEBREW_TAP_TOKEN}@github.com/yoavf/homebrew-tap.git" tap
+          ./Scripts/render-homebrew-cask.sh "$VERSION" "$SHA256" tap/Casks/continuo.rb
+
+          git -C tap config user.name "github-actions[bot]"
+          git -C tap config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git -C tap add Casks/continuo.rb
+          if git -C tap diff --cached --quiet; then
+            echo "Cask already up to date"
+            exit 0
+          fi
+          git -C tap commit -m "continuo $VERSION"
+          git -C tap push
