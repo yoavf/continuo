@@ -1,3 +1,4 @@
+import Foundation
 import Testing
 @testable import AgentSyncApp
 
@@ -20,5 +21,18 @@ struct DesktopLaunchTests {
             url.absoluteString
                 == "claude://resume?session=11111111-2222-4333-8444-555555555555"
         )
+    }
+
+    @Test("OpenCode desktop sessions use the supported open-project deep link")
+    func openCodeDesktopDeepLink() throws {
+        let url = try #require(
+            TerminalLauncher.openCodeDesktopURL(
+                workingDirectory: "/Users/example/Developer/photon api"
+            )
+        )
+        let components = try #require(URLComponents(url: url, resolvingAgainstBaseURL: false))
+        #expect(components.scheme == "opencode")
+        #expect(components.host == "open-project")
+        #expect(components.queryItems?.first { $0.name == "directory" }?.value == "/Users/example/Developer/photon api")
     }
 }

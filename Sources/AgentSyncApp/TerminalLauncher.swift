@@ -30,6 +30,20 @@ enum ClaudeLaunchDestination: String, CaseIterable, Identifiable {
     }
 }
 
+enum OpenCodeLaunchDestination: String, CaseIterable, Identifiable {
+    case cli
+    case desktop
+
+    var id: String { rawValue }
+
+    var displayName: String {
+        switch self {
+        case .cli: return "Terminal"
+        case .desktop: return "OpenCode Desktop"
+        }
+    }
+}
+
 enum TerminalApp: String, CaseIterable, Identifiable {
     case terminal
     case iterm
@@ -201,6 +215,7 @@ extension TerminalLauncher {
         using preferred: TerminalApp,
         codexDestination: CodexLaunchDestination = .cli,
         claudeDestination: ClaudeLaunchDestination = .cli,
+        opencodeDestination: OpenCodeLaunchDestination = .cli,
         preparation suppliedPreparation: TerminalLaunchPreparation? = nil
     ) throws {
         if ticket.targetProvider == .codex, codexDestination == .chatGPTDesktop {
@@ -209,6 +224,10 @@ extension TerminalLauncher {
         }
         if ticket.targetProvider == .claude, claudeDestination == .claudeDesktop {
             try launchClaudeDesktop(sessionID: ticket.targetSessionID)
+            return
+        }
+        if ticket.targetProvider == .opencode, opencodeDestination == .desktop {
+            try launchOpenCodeDesktop(workingDirectory: ticket.workingDirectory)
             return
         }
 
@@ -281,6 +300,17 @@ extension TerminalLauncher {
         return components.url
     }
 
+    /// OpenCode's supported desktop deep link opens a project and navigates to
+    /// its latest root session. Converted mirrors are stamped as newly updated
+    /// during import, so this resolves to the session Continuo just prepared.
+    static func openCodeDesktopURL(workingDirectory: String) -> URL? {
+        var components = URLComponents()
+        components.scheme = "opencode"
+        components.host = "open-project"
+        components.queryItems = [URLQueryItem(name: "directory", value: workingDirectory)]
+        return components.url
+    }
+
     private static func launchCodexDesktop(sessionID: String) throws {
         guard NSWorkspace.shared.urlForApplication(withBundleIdentifier: "com.openai.codex") != nil else {
             throw TerminalLaunchError.notInstalled("ChatGPT Desktop")
@@ -296,6 +326,37 @@ extension TerminalLauncher {
         }
         guard let url = claudeDesktopURL(sessionID: sessionID), NSWorkspace.shared.open(url) else {
             throw TerminalLaunchError.desktopOpenFailed("Claude Desktop")
+        }
+    }
+
+    private static func launchOpenCodeDesktop(workingDirectory: String) throws {
+        let installedApplication = URL(fileURLWithPath: "/Applications/OpenCode.app", isDirectory: true)
+        let applicationURL: URL?
+        if Bundle(url: installedApplication)?.bundleIdentifier == "ai.opencode.desktop" {
+            applicationURL = installedApplication
+        } else {
+            applicationURL = NSWorkspace.shared.urlForApplication(
+                withBundleIdentifier: "ai.opencode.desktop"
+            )
+        }
+        guard let applicationURL else {
+            throw TerminalLaunchError.notInstalled("OpenCode Desktop")
+        }
+        guard let url = openCodeDesktopURL(workingDirectory: workingDirectory) else {
+            throw TerminalLaunchError.desktopOpenFailed("OpenCode Desktop")
+        }
+
+        // Explicitly target the installed app. macOS may otherwise route the
+        // custom URL to a second copy mounted from an OpenCode disk image.
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/usr/bin/open")
+        process.arguments = ["-a", applicationURL.path, url.absoluteString]
+        process.standardOutput = Pipe()
+        process.standardError = Pipe()
+        try process.run()
+        process.waitUntilExit()
+        guard process.terminationStatus == 0 else {
+            throw TerminalLaunchError.desktopOpenFailed("OpenCode Desktop")
         }
     }
 

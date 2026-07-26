@@ -140,6 +140,7 @@ public extension CanonicalSession {
 
 public enum MirrorKind: String, Codable, Sendable {
     case full
+    case bookends
     case handoff
 }
 
@@ -228,12 +229,35 @@ public struct ResumeTicket: Equatable, Sendable {
     public let targetSessionID: String
     public let workingDirectory: String
     public let usedHandoff: Bool
+    public let effectiveMode: ResumeMode
+    /// Counts describe the canonical events considered and the final window
+    /// handed to the renderer. They let callers explain the conversion result
+    /// before opening the target session.
+    public let sourceEventCount: Int
+    public let transferredEventCount: Int
+    public let omittedEventCount: Int
+    public let estimatedTransferredTokens: Int
 
-    public init(targetProvider: AgentKind, targetSessionID: String, workingDirectory: String, usedHandoff: Bool = false) {
+    public init(
+        targetProvider: AgentKind,
+        targetSessionID: String,
+        workingDirectory: String,
+        usedHandoff: Bool = false,
+        effectiveMode: ResumeMode = .full,
+        sourceEventCount: Int = 0,
+        transferredEventCount: Int = 0,
+        omittedEventCount: Int = 0,
+        estimatedTransferredTokens: Int = 0
+    ) {
         self.targetProvider = targetProvider
         self.targetSessionID = targetSessionID
         self.workingDirectory = workingDirectory
         self.usedHandoff = usedHandoff
+        self.effectiveMode = effectiveMode
+        self.sourceEventCount = sourceEventCount
+        self.transferredEventCount = transferredEventCount
+        self.omittedEventCount = omittedEventCount
+        self.estimatedTransferredTokens = estimatedTransferredTokens
     }
 }
 

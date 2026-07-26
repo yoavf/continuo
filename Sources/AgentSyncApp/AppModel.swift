@@ -15,6 +15,7 @@ enum Prefs {
     static let preferredTerminalKey = "preferredTerminal"
     static let codexLaunchDestinationKey = "codexLaunchDestination"
     static let claudeLaunchDestinationKey = "claudeLaunchDestination"
+    static let opencodeLaunchDestinationKey = "opencodeLaunchDestination"
     static let supersetV2EnabledKey = "supersetV2Enabled"
 
     static var production: AgentSyncConfiguration {
@@ -61,6 +62,11 @@ enum Prefs {
             .flatMap(ClaudeLaunchDestination.init(rawValue:)) ?? .cli
     }
 
+    static var opencodeLaunchDestination: OpenCodeLaunchDestination {
+        UserDefaults.standard.string(forKey: opencodeLaunchDestinationKey)
+            .flatMap(OpenCodeLaunchDestination.init(rawValue:)) ?? .cli
+    }
+
     static func resolvedTerminalPreference(_ rawValue: String?) -> TerminalApp {
         guard let terminal = rawValue.flatMap(TerminalApp.init(rawValue:)),
               terminal.isSelectable else {
@@ -98,16 +104,10 @@ enum Prefs {
 
     static let modelPairsKey = "modelPairs"
     static let opencodeResumeModelKey = "opencodeResumeModel"
-    static let transferModeKey = "transferMode"
     static let hotkeyEnabledKey = "hotkeyEnabled"
 
     static var hotkeyEnabled: Bool {
         UserDefaults.standard.object(forKey: hotkeyEnabledKey) as? Bool ?? true
-    }
-
-    static var transferMode: ResumeMode {
-        UserDefaults.standard.string(forKey: transferModeKey)
-            .flatMap(ResumeMode.init(rawValue:)) ?? .auto
     }
 
     /// Empty string means "OpenCode's own choice".
@@ -178,6 +178,20 @@ enum AppStatus: Equatable {
     case working(String)
     case notice(String)
     case error(String)
+}
+
+/// A converted native session that has not been opened yet. Keeping launch
+/// details alongside the ticket makes review a real pause in the workflow,
+/// rather than a cosmetic screen shown after the destination already opened.
+struct PreparedConversion: Sendable {
+    let itemID: String
+    let ticket: ResumeTicket
+    let targetModel: String
+    let terminal: TerminalApp
+    let codexDestination: CodexLaunchDestination
+    let claudeDestination: ClaudeLaunchDestination
+    let opencodeDestination: OpenCodeLaunchDestination
+    let launchPreparation: TerminalLaunchPreparation
 }
 
 extension AgentKind {
@@ -308,6 +322,7 @@ final class AppModel: ObservableObject {
     @Published var status: AppStatus = .idle
     @Published var isRefreshing = false
     @Published var launchingID: String?
+    @Published var preparedConversion: PreparedConversion?
     @Published var terminalSetupAlert: TerminalSetupAlert?
 
     private var refreshTimer: Timer?
@@ -482,18 +497,35 @@ final class AppModel: ObservableObject {
         }
     }
 
-    func resume(_ item: SessionItem, target: AgentKind, mode explicitMode: ResumeMode? = nil) {
-        let mode = explicitMode ?? Prefs.transferMode
+    func prepareResume(_ item: SessionItem, target: AgentKind, mode: ResumeMode) {
         guard launchingID == nil, target != item.preview.provider else {
             return
         }
         let terminal = Prefs.preferredTerminal
         let codexDestination = Prefs.codexLaunchDestination
         let claudeDestination = Prefs.claudeLaunchDestination
+        let opencodeDestination = Prefs.opencodeLaunchDestination
         launchingID = item.id
-        setStatus(.working("Preparing \(target.displayName) session…"))
+        setStatus(.working("Converting for \(target.displayName)…"))
         Prefs.setPrimaryTarget(target, for: item.preview.provider)
         let configuration = Prefs.configuration()
+        let targetModel: String
+        if target == .opencode {
+            targetModel = Prefs.opencodeResumeModel.isEmpty
+                ? OpenCodeAdapter().mostRecentModel(opencodeHome: configuration.opencodeHome)
+                    ?? Prefs.modelMappings().targetModel(
+                        forSourceModel: item.preview.models.first,
+                        sourceProvider: item.preview.provider,
+                        targetProvider: target
+                    )
+                : Prefs.opencodeResumeModel
+        } else {
+            targetModel = Prefs.modelMappings().targetModel(
+                forSourceModel: item.preview.models.first,
+                sourceProvider: item.preview.provider,
+                targetProvider: target
+            )
+        }
 
         Task.detached(priority: .userInitiated) {
             let result = Result {
@@ -501,6 +533,8 @@ final class AppModel: ObservableObject {
                 if target == .codex, codexDestination == .chatGPTDesktop {
                     preparation = .standard
                 } else if target == .claude, claudeDestination == .claudeDesktop {
+                    preparation = .standard
+                } else if target == .opencode, opencodeDestination == .desktop {
                     preparation = .standard
                 } else {
                     preparation = try TerminalLauncher.preflight(
@@ -516,22 +550,60 @@ final class AppModel: ObservableObject {
                     target: target,
                     mode: mode
                 )
-                try TerminalLauncher.launch(
-                    ticket,
-                    using: terminal,
+                return PreparedConversion(
+                    itemID: item.id,
+                    ticket: ticket,
+                    targetModel: targetModel,
+                    terminal: terminal,
                     codexDestination: codexDestination,
                     claudeDestination: claudeDestination,
-                    preparation: preparation
+                    opencodeDestination: opencodeDestination,
+                    launchPreparation: preparation
                 )
-                return ticket
             }
             await MainActor.run {
                 switch result {
-                case .success(let ticket):
-                    let text = ticket.usedHandoff
-                        ? "Sent a handoff brief to \(ticket.targetProvider.displayName)"
-                        : "Opened in \(ticket.targetProvider.displayName)"
-                    self.setStatus(.notice(text), autoClear: true)
+                case .success(let prepared):
+                    self.preparedConversion = prepared
+                    self.setStatus(.idle)
+                case .failure(let error):
+                    self.setStatus(.error(shortErrorText(error)))
+                    if let launchError = error as? TerminalLaunchError,
+                       let setupAlert = launchError.setupAlert {
+                        self.terminalSetupAlert = setupAlert
+                    }
+                }
+                self.launchingID = nil
+            }
+        }
+    }
+
+    func launchPreparedConversion() {
+        guard launchingID == nil, let prepared = preparedConversion else {
+            return
+        }
+        launchingID = prepared.itemID
+        setStatus(.working("Opening \(prepared.ticket.targetProvider.displayName)…"))
+
+        Task.detached(priority: .userInitiated) {
+            let result = Result {
+                try TerminalLauncher.launch(
+                    prepared.ticket,
+                    using: prepared.terminal,
+                    codexDestination: prepared.codexDestination,
+                    claudeDestination: prepared.claudeDestination,
+                    opencodeDestination: prepared.opencodeDestination,
+                    preparation: prepared.launchPreparation
+                )
+            }
+            await MainActor.run {
+                switch result {
+                case .success:
+                    self.preparedConversion = nil
+                    self.setStatus(
+                        .notice("Opened in \(prepared.ticket.targetProvider.displayName)"),
+                        autoClear: true
+                    )
                 case .failure(let error):
                     self.setStatus(.error(shortErrorText(error)))
                     if let launchError = error as? TerminalLaunchError,
@@ -543,6 +615,10 @@ final class AppModel: ObservableObject {
                 self.refresh()
             }
         }
+    }
+
+    func clearPreparedConversion() {
+        preparedConversion = nil
     }
 
     func clearStatus() {

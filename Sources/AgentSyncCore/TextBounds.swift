@@ -76,6 +76,12 @@ public func fullTranscriptFits(estimatedTokens: Int, targetModel: String) -> Boo
     Int(Double(estimatedTokens) * 3.4) <= transcriptByteBudget(forTargetModel: targetModel)
 }
 
+/// Approximate visible-transcript size Continuo can safely carry while leaving
+/// room for the target agent's system prompt, tools, and new work.
+public func transcriptTransferTokenLimit(forTargetModel targetModel: String) -> Int {
+    Int(Double(transcriptByteBudget(forTargetModel: targetModel)) / 3.4)
+}
+
 /// Byte budget for a render aimed at `targetModel`: 60% of the context window
 /// (the rest is headroom for system prompt, tools, and the agent's actual
 /// work), at ~3.4 chars/token — calibrated against a real resume, where a
