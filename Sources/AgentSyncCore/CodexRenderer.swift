@@ -122,7 +122,7 @@ public extension CodexAdapter {
 
         // Provenance context travels as a developer message so the resumed
         // agent knows this history was mirrored from the other tool.
-        let provenanceID = "agent_sync_\(UUID().uuidString.replacingOccurrences(of: "-", with: ""))"
+        let provenanceID = responseItemID(prefix: "msg")
         nativeEventIDs.append("codex:\(targetSessionID):\(provenanceID)")
         objects.append(responseItem(
             timestamp: start,
@@ -145,19 +145,20 @@ public extension CodexAdapter {
             if renderedText.isEmpty {
                 continue
             }
-            let nativeMessageID = "agent_sync_\(UUID().uuidString.replacingOccurrences(of: "-", with: ""))"
+            let nativeItemID = responseItemID(prefix: responseItemIDPrefix(for: event))
+            let fallbackCallID = responseItemID(prefix: "call")
+            let eventCallID = callID(for: event, fallback: fallbackCallID)
             // Recorded ids must match what CodexAdapter derives on re-import
             // (call_id-based for tool events), or the echo guard misses them.
             switch event.role {
             case .tool:
-                let cid = callID(for: event, fallback: nativeMessageID)
                 if event.kind == "tool_result" {
-                    nativeEventIDs.append("codex:\(targetSessionID):\(cid):output")
+                    nativeEventIDs.append("codex:\(targetSessionID):\(eventCallID):output")
                 } else {
-                    nativeEventIDs.append("codex:\(targetSessionID):\(cid)")
+                    nativeEventIDs.append("codex:\(targetSessionID):\(eventCallID)")
                 }
             default:
-                nativeEventIDs.append("codex:\(targetSessionID):\(nativeMessageID)")
+                nativeEventIDs.append("codex:\(targetSessionID):\(nativeItemID)")
             }
             switch event.role {
             case .user, .assistant, .developer, .system:
@@ -188,7 +189,7 @@ public extension CodexAdapter {
                     timestamp: event.timestamp,
                     payload: [
                         "type": .string("message"),
-                        "id": .string(nativeMessageID),
+                        "id": .string(nativeItemID),
                         "role": .string(role),
                         "content": .array([.object([
                             "type": .string(itemType),
@@ -224,14 +225,18 @@ public extension CodexAdapter {
             case .tool:
                 objects.append(responseItem(
                     timestamp: event.timestamp,
-                    payload: codexToolPayload(for: event, nativeMessageID: nativeMessageID)
+                    payload: codexToolPayload(
+                        for: event,
+                        nativeItemID: nativeItemID,
+                        callID: eventCallID
+                    )
                 ))
             case .summary:
                 objects.append(responseItem(
                     timestamp: event.timestamp,
                     payload: [
                         "type": .string("reasoning"),
-                        "id": .string(nativeMessageID),
+                        "id": .string(nativeItemID),
                         "summary": .array([.object([
                             "type": .string("summary_text"),
                             "text": .string(event.text)
@@ -264,27 +269,47 @@ public extension CodexAdapter {
         }
     }
 
-    private func codexToolPayload(for event: CanonicalEvent, nativeMessageID: String) -> [String: JSONValue] {
+    private func responseItemIDPrefix(for event: CanonicalEvent) -> String {
+        switch event.role {
+        case .tool:
+            return event.kind == "tool_use" ? "fc" : "rs"
+        case .summary:
+            return "rs"
+        case .user, .assistant, .developer, .system:
+            return "msg"
+        }
+    }
+
+    private func responseItemID(prefix: String) -> String {
+        let suffix = UUID().uuidString.replacingOccurrences(of: "-", with: "").lowercased()
+        return "\(prefix)_\(suffix)"
+    }
+
+    private func codexToolPayload(
+        for event: CanonicalEvent,
+        nativeItemID: String,
+        callID: String
+    ) -> [String: JSONValue] {
         switch event.kind {
         case "tool_use":
             let name = ToolTaxonomy.renderedToolName(for: event, target: .codex)
             return [
                 "type": .string("function_call"),
-                "id": .string(nativeMessageID),
-                "call_id": .string(callID(for: event, fallback: nativeMessageID)),
+                "id": .string(nativeItemID),
+                "call_id": .string(callID),
                 "name": .string(name),
                 "arguments": .string(toolPayloadBody(event.text))
             ]
         case "tool_result":
             return [
                 "type": .string("function_call_output"),
-                "call_id": .string(callID(for: event, fallback: nativeMessageID)),
+                "call_id": .string(callID),
                 "output": .string(toolPayloadBody(event.text))
             ]
         default:
             return [
                 "type": .string("reasoning"),
-                "id": .string(nativeMessageID),
+                "id": .string(nativeItemID),
                 "summary": .array([.object([
                     "type": .string("summary_text"),
                     "text": .string(event.text)
