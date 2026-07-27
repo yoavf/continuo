@@ -280,8 +280,9 @@ public extension OpenCodeAdapter {
                 "created": millis(session.createdAt),
                 // The mirror was created now even though its conversation
                 // events retain their original timestamps. OpenCode Desktop's
-                // supported open-project deep link selects the latest root
-                // session, so this makes it land on the conversion.
+                // supported open-project deep link opens the most recently
+                // updated root session, so it lands on this conversion unless
+                // another session in the same project is touched first.
                 "updated": millis(Date())
             ])
         ]

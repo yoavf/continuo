@@ -26,14 +26,21 @@ public struct BridgeState: Codable, Equatable, Sendable {
     }
 
     /// The most recently updated mirror of a canonical session for a target
-    /// provider. Multiple mirrors can exist once a continued (frozen) mirror
-    /// has been superseded by a fresh render; on an updatedAt tie the fresh
-    /// (uncontinued) mirror is the successor.
-    public func latestMirror(canonicalSessionID: String, targetProvider: AgentKind) -> MirrorRecord? {
+    /// provider and kind. Multiple mirrors can exist once a continued (frozen)
+    /// mirror has been superseded by a fresh render; on an updatedAt tie the
+    /// fresh (uncontinued) mirror is the successor. Kind defaults to `.full`
+    /// so a compacted (bookends/handoff) mirror is never mistaken for a full
+    /// transcript.
+    public func latestMirror(
+        canonicalSessionID: String,
+        targetProvider: AgentKind,
+        kind: MirrorKind = .full
+    ) -> MirrorRecord? {
         mirrorsByNativeSession.values
             .filter {
                 $0.canonicalSessionID == canonicalSessionID
                     && $0.targetProvider == targetProvider
+                    && $0.kind == kind
                     && !$0.isPendingWrite
             }
             .max { lhs, rhs in

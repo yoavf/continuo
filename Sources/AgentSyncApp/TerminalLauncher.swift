@@ -351,9 +351,14 @@ extension TerminalLauncher {
         let process = Process()
         process.executableURL = URL(fileURLWithPath: "/usr/bin/open")
         process.arguments = ["-a", applicationURL.path, url.absoluteString]
-        process.standardOutput = Pipe()
-        process.standardError = Pipe()
+        let stdout = Pipe()
+        let stderr = Pipe()
+        process.standardOutput = stdout
+        process.standardError = stderr
         try process.run()
+        // Drain before waiting so a full pipe buffer can't deadlock the child.
+        _ = stdout.fileHandleForReading.readDataToEndOfFile()
+        _ = stderr.fileHandleForReading.readDataToEndOfFile()
         process.waitUntilExit()
         guard process.terminationStatus == 0 else {
             throw TerminalLaunchError.desktopOpenFailed("OpenCode Desktop")

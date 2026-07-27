@@ -110,14 +110,12 @@ public final class SyncEngine {
 
         // Resolve this once so the auto decision, result metrics, and renderer
         // all describe the same target-model budget.
-        let targetModel: String
-        if target == .opencode {
-            targetModel = configuration.opencodeResumeModel
-                ?? opencode.mostRecentModel(opencodeHome: configuration.opencodeHome)
-                ?? configuration.modelMappings.targetModel(for: session, targetProvider: target)
-        } else {
-            targetModel = configuration.modelMappings.targetModel(for: session, targetProvider: target)
-        }
+        let targetModel = configuration.resumeTargetModel(
+            sourceModel: session.model,
+            sourceProvider: session.sourceProvider,
+            target: target,
+            opencode: opencode
+        )
         let budget = transcriptByteBudget(forTargetModel: targetModel)
         let fullWindow = transcriptWindow(events, byteBudget: budget)
 
@@ -150,6 +148,7 @@ public final class SyncEngine {
                 effectiveMode: .bookends,
                 sourceEventCount: events.count,
                 transferredEventCount: reduced.events.count,
+                omittedEventCount: omittedCount(source: events, reduced: reduced.events),
                 estimatedTransferredTokens: estimatedTokens(in: reduced.events)
             )
         }
@@ -171,6 +170,7 @@ public final class SyncEngine {
                 effectiveMode: .handoff,
                 sourceEventCount: events.count,
                 transferredEventCount: reduced.events.count,
+                omittedEventCount: omittedCount(source: events, reduced: reduced.events),
                 estimatedTransferredTokens: estimatedTokens(in: reduced.events)
             )
         }
@@ -191,6 +191,10 @@ public final class SyncEngine {
         // Full mode: the clicked session may itself be a mirror whose newest
         // events came from the target side — then the freshest full session on
         // the target is the origin/mirror we already have, not a re-render.
+        // Only full-kind mirrors qualify: reusing a bookends/handoff mirror
+        // here would hand the user a compacted session under a full ticket,
+        // so their absence falls through to a fresh full render (which
+        // includes any target-side turns already imported back).
         if latestProvider(for: session) == target || session.events.isEmpty {
             if let mirror = state.latestMirror(canonicalSessionID: canonicalID, targetProvider: target) {
                 return fullTicket(mirror.targetSessionID)
@@ -207,6 +211,15 @@ public final class SyncEngine {
     private func estimatedTokens(in events: [CanonicalEvent]) -> Int {
         let bytes = events.reduce(0) { $0 + $1.text.utf8.count + 64 }
         return max(1, Int((Double(bytes) / 3.4).rounded()))
+    }
+
+    /// Canonical events that did not survive into a reduced render. Kept
+    /// events retain their canonical ids; synthetic ones (brief, notice,
+    /// repeated latest request) don't count as carried.
+    private func omittedCount(source: [CanonicalEvent], reduced: [CanonicalEvent]) -> Int {
+        let sourceIDs = Set(source.map(\.id))
+        let carried = reduced.reduce(0) { $0 + (sourceIDs.contains($1.id) ? 1 : 0) }
+        return source.count - carried
     }
 
     private func importSession(provider: AgentKind, sourcePath: String) throws -> CanonicalSession? {

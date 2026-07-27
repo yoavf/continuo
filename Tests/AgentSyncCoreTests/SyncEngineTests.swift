@@ -358,6 +358,8 @@ import Testing
     #expect(handoff.sourceEventCount == full.sourceEventCount)
     #expect(handoff.transferredEventCount > 0)
     #expect(handoff.transferredEventCount <= handoff.sourceEventCount)
+    // Only the two conversation messages survive a handoff; tool traffic is omitted.
+    #expect(handoff.omittedEventCount == handoff.sourceEventCount - 2)
     #expect(handoff.estimatedTransferredTokens > 0)
 
     let state = try engine.currentState()
@@ -374,6 +376,66 @@ import Testing
     let auto = try engine.prepareResume(provider: .claude, sourcePath: claudeSource.path, mode: .auto)
     #expect(!auto.usedHandoff)
     #expect(auto.targetSessionID == full.targetSessionID)
+}
+
+@Test func fullResumeAfterContinuationInCompactedMirrorRendersFreshFullMirror() throws {
+    let root = URL(fileURLWithPath: NSTemporaryDirectory(), isDirectory: true)
+        .appendingPathComponent("agent-sync-full-after-handoff-\(UUID().uuidString.lowercased())", isDirectory: true)
+    defer { try? FileManager.default.removeItem(at: root) }
+
+    let fixture = AgentSyncFixtureBuilder(root: root)
+    try fixture.create()
+    let claudeSource = fixture.claudeHome
+        .appendingPathComponent("projects", isDirectory: true)
+        .appendingPathComponent(PathEncoding.claudeProjectName(for: fixture.workspace.path), isDirectory: true)
+        .appendingPathComponent("11111111-1111-4111-8111-111111111111.jsonl")
+
+    let engine = SyncEngine(configuration: fixture.configuration())
+    let handoff = try engine.prepareResume(
+        provider: .claude,
+        sourcePath: claudeSource.path,
+        target: .codex,
+        mode: .handoff
+    )
+    let stateAfterHandoff = try engine.currentState()
+    let handoffMirror = try #require(stateAfterHandoff.mirrorsByNativeSession.values.first {
+        $0.targetSessionID == handoff.targetSessionID
+    })
+    #expect(handoffMirror.kind == .handoff)
+
+    // The user keeps talking inside the compacted mirror; those turns are
+    // imported back, making the target side the freshest.
+    try appendCodexContinuation(
+        to: URL(fileURLWithPath: handoffMirror.targetPath),
+        sessionID: handoffMirror.targetSessionID,
+        userText: "Continue after the handoff.",
+        assistantText: "Post-handoff turn captured.",
+        timestamp: Date(timeIntervalSince1970: 1_783_000_301)
+    )
+    _ = try engine.syncOnce()
+
+    // A full resume must not reopen the compacted mirror: it renders a fresh
+    // full mirror carrying everything, including the post-handoff turns.
+    let full = try engine.prepareResume(
+        provider: .claude,
+        sourcePath: claudeSource.path,
+        target: .codex,
+        mode: .full
+    )
+
+    #expect(full.effectiveMode == .full)
+    #expect(full.targetSessionID != handoff.targetSessionID)
+    #expect(full.transferredEventCount == full.sourceEventCount)
+    #expect(full.omittedEventCount == 0)
+
+    let finalState = try engine.currentState()
+    let freshMirror = try #require(finalState.mirrorsByNativeSession.values.first {
+        $0.targetSessionID == full.targetSessionID
+    })
+    #expect(freshMirror.kind == .full)
+    let freshText = try String(contentsOfFile: freshMirror.targetPath, encoding: .utf8)
+    #expect(freshText.contains("Build a tiny parser in Swift."))
+    #expect(freshText.contains("Continue after the handoff."))
 }
 
 @Test func bookendsKeepOpeningAndLatestMessagesWithoutToolTraffic() {
@@ -481,6 +543,9 @@ import Testing
     )
     #expect(bookends.effectiveMode == .bookends)
     #expect(bookends.estimatedTransferredTokens < 40_000)
+    // Bookends keeps the first 4 and latest 8 of the 42 messages; everything
+    // else (middle messages, tool traffic) is counted as omitted.
+    #expect(bookends.omittedEventCount == bookends.sourceEventCount - 12)
 }
 
 @Test func toolNamesRenderInTheTargetAgentsVocabulary() throws {

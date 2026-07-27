@@ -180,6 +180,11 @@ struct AgentSyncCLI {
               migrate-state --state-dir PATH
               prune-state --state-dir PATH
               e2e [--root PATH]
+
+            Modes: auto renders the full transcript when it fits the target's safe
+            transfer budget and a handoff brief otherwise. full errors instead of
+            trimming when the transcript does not fit; bookends and handoff always
+            compact.
             """
         )
     }

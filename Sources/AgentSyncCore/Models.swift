@@ -513,3 +513,30 @@ public struct AgentSyncConfiguration: Equatable, Sendable {
         )
     }
 }
+
+public extension AgentSyncConfiguration {
+    /// The model a resumed session on `target` would run under — and the one
+    /// transfer budgets are sized against. Single resolution point for the
+    /// popover preview, `prepareResume`, and the launch path so they can't
+    /// drift apart.
+    func resumeTargetModel(
+        sourceModel: String?,
+        sourceProvider: AgentKind,
+        target: AgentKind,
+        opencode: OpenCodeAdapter = OpenCodeAdapter()
+    ) -> String {
+        if target == .opencode {
+            if let configured = opencodeResumeModel, !configured.isEmpty {
+                return configured
+            }
+            if let recent = opencode.mostRecentModel(opencodeHome: opencodeHome) {
+                return recent
+            }
+        }
+        return modelMappings.targetModel(
+            forSourceModel: sourceModel,
+            sourceProvider: sourceProvider,
+            targetProvider: target
+        )
+    }
+}

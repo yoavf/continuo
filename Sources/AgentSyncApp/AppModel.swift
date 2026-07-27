@@ -509,23 +509,11 @@ final class AppModel: ObservableObject {
         setStatus(.working("Converting for \(target.displayName)…"))
         Prefs.setPrimaryTarget(target, for: item.preview.provider)
         let configuration = Prefs.configuration()
-        let targetModel: String
-        if target == .opencode {
-            targetModel = Prefs.opencodeResumeModel.isEmpty
-                ? OpenCodeAdapter().mostRecentModel(opencodeHome: configuration.opencodeHome)
-                    ?? Prefs.modelMappings().targetModel(
-                        forSourceModel: item.preview.models.first,
-                        sourceProvider: item.preview.provider,
-                        targetProvider: target
-                    )
-                : Prefs.opencodeResumeModel
-        } else {
-            targetModel = Prefs.modelMappings().targetModel(
-                forSourceModel: item.preview.models.first,
-                sourceProvider: item.preview.provider,
-                targetProvider: target
-            )
-        }
+        let targetModel = configuration.resumeTargetModel(
+            sourceModel: item.preview.models.first,
+            sourceProvider: item.preview.provider,
+            target: target
+        )
 
         Task.detached(priority: .userInitiated) {
             let result = Result {

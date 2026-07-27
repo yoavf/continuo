@@ -32,6 +32,10 @@ struct SessionPickerView: View {
         VStack(spacing: 0) {
             if let item = selectedItem {
                 ContinueView(model: model, item: item) {
+                    // Leaving the continue flow abandons any prepared
+                    // conversion; otherwise reopening the same session would
+                    // restore (and offer to launch) stale choices.
+                    model.clearPreparedConversion()
                     selectedItem = nil
                 }
             } else {

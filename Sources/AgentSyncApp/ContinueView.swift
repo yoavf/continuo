@@ -191,20 +191,10 @@ struct ContinueView: View {
     }
 
     private static func targetModel(item: SessionItem, target: AgentKind) -> String {
-        if target == .opencode {
-            if !Prefs.opencodeResumeModel.isEmpty {
-                return Prefs.opencodeResumeModel
-            }
-            if let recent = OpenCodeAdapter().mostRecentModel(
-                opencodeHome: Prefs.configuration().opencodeHome
-            ) {
-                return recent
-            }
-        }
-        return Prefs.modelMappings().targetModel(
-            forSourceModel: item.preview.models.first,
+        Prefs.configuration().resumeTargetModel(
+            sourceModel: item.preview.models.first,
             sourceProvider: item.preview.provider,
-            targetProvider: target
+            target: target
         )
     }
 
@@ -522,10 +512,10 @@ private struct ConversionResultView: View {
     }
 
     private var transferredTokensLabel: String {
-        if ticket.effectiveMode == .full {
-            return item.preview.tokensLabel
-        }
-        return compactTokens(ticket.estimatedTransferredTokens)
+        // The engine's payload-bytes estimate measures what was actually
+        // rendered; the preview's scanner heuristic would just duplicate the
+        // ORIGINAL card.
+        compactTokens(ticket.estimatedTransferredTokens)
     }
 
     private func compactTokens(_ tokens: Int) -> String {
