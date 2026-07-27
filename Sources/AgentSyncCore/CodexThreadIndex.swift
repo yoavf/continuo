@@ -40,7 +40,7 @@ struct CodexThreadIndex {
             ("source", SQL.quote(source)),
             ("model_provider", SQL.quote("openai")),
             ("cwd", SQL.quote(session.cwd)),
-            ("title", SQL.quote("[Bridge] \(session.title)")),
+            ("title", SQL.quote("[Continuo] \(session.title)")),
             ("sandbox_policy", SQL.quote("{\"type\":\"workspace-write\"}")),
             ("approval_mode", SQL.quote("untrusted")),
             ("tokens_used", "0"),

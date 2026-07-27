@@ -291,23 +291,24 @@ struct SessionItem: Identifiable, Equatable, Sendable {
     }
 
     var displayTitle: String {
+        let title = preview.title
+        // A provider-authored title is authoritative, including when an older
+        // app version cached an AI-generated title for this session.
+        if preview.hasSourceTitle {
+            for prefix in ["[Continuo] ", "[Bridge] "] where title.hasPrefix(prefix) {
+                return String(title.dropFirst(prefix.count))
+            }
+            return title
+        }
         if let refinedTitle {
             return refinedTitle
-        }
-        let title = preview.title
-        if title.hasPrefix("[Bridge] ") {
-            return String(title.dropFirst("[Bridge] ".count))
         }
         return title
     }
 
-    /// A "title" that is really an untrimmed prompt or injected context.
+    /// Sessions without provider title metadata need an on-device title.
     var wantsRefinedTitle: Bool {
-        guard refinedTitle == nil else {
-            return false
-        }
-        let title = displayTitle
-        return title.hasPrefix("#") || title.contains("<") || title.count >= 85
+        !preview.hasSourceTitle && refinedTitle == nil
     }
 }
 
@@ -416,7 +417,9 @@ final class AppModel: ObservableObject {
                 case .success(let (items, models)):
                     let decorated = items.map { item -> SessionItem in
                         var item = item
-                        item.refinedTitle = self.titleCache[item.id]
+                        if !item.preview.hasSourceTitle {
+                            item.refinedTitle = self.titleCache[item.id]
+                        }
                         return item
                     }
                     // Only notify SwiftUI when something actually changed —
@@ -456,11 +459,13 @@ final class AppModel: ObservableObject {
                     guard let title else {
                         return
                     }
+                    guard let index = self.sessions.firstIndex(where: { $0.id == item.id }),
+                          !self.sessions[index].preview.hasSourceTitle else {
+                        return
+                    }
                     self.titleCache[item.id] = title
                     Self.saveTitleCache(self.titleCache)
-                    if let index = self.sessions.firstIndex(where: { $0.id == item.id }) {
-                        self.sessions[index].refinedTitle = title
-                    }
+                    self.sessions[index].refinedTitle = title
                     self.generateMissingTitles()
                 }
             }
@@ -470,7 +475,7 @@ final class AppModel: ObservableObject {
     /// Drop cached AI titles for sessions that have aged out of the scan, so
     /// the cache doesn't grow without bound across launches.
     private func pruneTitleCache(keeping items: [SessionItem]) {
-        let live = Set(items.map(\.id))
+        let live = Set(items.filter { !$0.preview.hasSourceTitle }.map(\.id))
         let pruned = titleCache.filter { live.contains($0.key) }
         if pruned.count != titleCache.count {
             titleCache = pruned

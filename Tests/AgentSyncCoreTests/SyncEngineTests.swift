@@ -41,6 +41,7 @@ import Testing
     let claudeMirrorText = try String(contentsOfFile: claudeMirror.targetPath, encoding: .utf8)
     #expect(codexMirrorText.contains("Build a tiny parser in Swift."))
     #expect(claudeMirrorText.contains("Port this shell script to Swift."))
+    #expect(claudeMirrorText.contains("\"aiTitle\":\"[Continuo] Port this shell script to Swift.\""))
 
     // The codex mirror must deserialize as a Codex rollout: no base_instructions
     // stub, thread_source present, and tool calls paired with their outputs via
@@ -192,6 +193,7 @@ import Testing
     #expect(mirror.targetIndexPath == codexHome.appendingPathComponent("state_5.sqlite").path)
     #expect(try sqliteThreadCount(codexHome.appendingPathComponent("state_5.sqlite")) == 1)
     #expect(try sqliteScalar(codexHome.appendingPathComponent("state_5.sqlite"), "select thread_source from threads limit 1;") == "user")
+    #expect(try sqliteScalar(codexHome.appendingPathComponent("state_5.sqlite"), "select title from threads limit 1;") == "[Continuo] Index me")
 }
 
 @Test func prepareResumeConvertsOneSessionAndResolvesTheOppositeProvider() throws {
@@ -1597,7 +1599,7 @@ private func appendJSONL(_ objects: [[String: JSONValue]], to url: URL) throws {
 
     let info = try #require(built.export["info"]?.objectValue)
     #expect(info.string("id") == "ses_agsynctest01")
-    #expect(info.string("title") == "[Bridge] Render me")
+    #expect(info.string("title") == "[Continuo] Render me")
     #expect(info.string("projectID") == "global")
 
     let messages = try #require(built.export["messages"]?.arrayValue)

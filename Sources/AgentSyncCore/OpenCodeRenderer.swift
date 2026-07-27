@@ -274,7 +274,7 @@ public extension OpenCodeAdapter {
             "slug": .string("agent-sync-\(String(targetSessionID.suffix(8)))"),
             "projectID": .string(projectID(for: session.cwd, database: database)),
             "directory": .string(session.cwd),
-            "title": .string("[Bridge] \(session.title)"),
+            "title": .string("[Continuo] \(session.title)"),
             "version": .string(installedVersion(database: database)),
             "time": .object([
                 "created": millis(session.createdAt),

@@ -164,7 +164,7 @@ public extension ClaudeAdapter {
         objects.append([
             "type": .string("ai-title"),
             "sessionId": .string(targetSessionID),
-            "aiTitle": .string("[Bridge] \(session.title)")
+            "aiTitle": .string("[Continuo] \(session.title)")
         ])
         objects.append([
             "type": .string("last-prompt"),

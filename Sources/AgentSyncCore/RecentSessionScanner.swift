@@ -7,6 +7,9 @@ public struct SessionPreview: Identifiable, Equatable, Sendable {
     public var sessionID: String
     public var path: String
     public var title: String
+    /// Whether `title` came from the provider's own session metadata rather
+    /// than falling back to the first prompt or a generic session label.
+    public var hasSourceTitle: Bool
     /// First real user message (injected context skipped), for on-device AI
     /// title generation. Longer than the display title.
     public var snippet: String
@@ -22,6 +25,7 @@ public struct SessionPreview: Identifiable, Equatable, Sendable {
         sessionID: String,
         path: String,
         title: String,
+        hasSourceTitle: Bool = false,
         snippet: String,
         models: [String],
         estimatedTokens: Int,
@@ -32,6 +36,7 @@ public struct SessionPreview: Identifiable, Equatable, Sendable {
         self.sessionID = sessionID
         self.path = path
         self.title = title
+        self.hasSourceTitle = hasSourceTitle
         self.snippet = snippet
         self.models = models
         self.estimatedTokens = estimatedTokens
@@ -168,11 +173,13 @@ public enum RecentSessionScanner {
             }
             let updatedMS = OpenCodeAdapter.milliseconds(row["time_updated"]) ?? 0
             let model = OpenCodeAdapter.modelReference(fromColumn: row.string("model"))
+            let sourceTitle = cleanTitle(row.string("title"))
             return SessionPreview(
                 provider: .opencode,
                 sessionID: id,
                 path: id,
-                title: cleanTitle(row.string("title")) ?? "OpenCode session \(id)",
+                title: sourceTitle ?? "OpenCode session \(id)",
+                hasSourceTitle: sourceTitle != nil,
                 snippet: "",
                 models: model.map { [$0] } ?? [],
                 estimatedTokens: {
@@ -335,12 +342,14 @@ public enum RecentSessionScanner {
                 title = aiTitle
             }
         }
+        let sourceTitle = cleanTitle(title)
 
         return SessionPreview(
             provider: .claude,
             sessionID: sessionID,
             path: url.path,
-            title: cleanTitle(title) ?? cleanTitle(snippet) ?? "Claude session \(sessionID)",
+            title: sourceTitle ?? cleanTitle(snippet) ?? "Claude session \(sessionID)",
+            hasSourceTitle: sourceTitle != nil,
             snippet: String((snippet ?? "").prefix(600)),
             models: models,
             estimatedTokens: estimatedTokens,
@@ -399,12 +408,13 @@ public enum RecentSessionScanner {
         }
 
         let snippet = typedMessage ?? fallbackMessage
-        let title = threadTitles[sessionID] ?? snippet
+        let sourceTitle = cleanTitle(threadTitles[sessionID])
         return SessionPreview(
             provider: .codex,
             sessionID: sessionID,
             path: url.path,
-            title: cleanTitle(title) ?? "Codex session \(sessionID)",
+            title: sourceTitle ?? cleanTitle(snippet) ?? "Codex session \(sessionID)",
+            hasSourceTitle: sourceTitle != nil,
             snippet: String((snippet ?? "").prefix(600)),
             models: models,
             estimatedTokens: estimatedTokens,
