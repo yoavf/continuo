@@ -1331,6 +1331,59 @@ private func appendJSONL(_ objects: [[String: JSONValue]], to url: URL) throws {
     #expect(assistant.metadata.string("model") == "anthropic/claude-sonnet-5")
 }
 
+@Test func openCodeToCodexUsesCodexResponseItemIDPrefixes() throws {
+    let root = URL(fileURLWithPath: NSTemporaryDirectory(), isDirectory: true)
+        .appendingPathComponent("agent-sync-opencode-codex-ids-\(UUID().uuidString.lowercased())", isDirectory: true)
+    defer { try? FileManager.default.removeItem(at: root) }
+
+    let opencodeHome = root.appendingPathComponent("opencode", isDirectory: true)
+    let codexHome = root.appendingPathComponent("codex", isDirectory: true)
+    let claudeHome = root.appendingPathComponent("claude", isDirectory: true)
+    let stateDirectory = root.appendingPathComponent("state", isDirectory: true)
+    try FileManager.default.createDirectory(at: opencodeHome, withIntermediateDirectories: true)
+    try createOpenCodeFixtureDatabase(opencodeHome.appendingPathComponent("opencode.db"))
+
+    let engine = SyncEngine(configuration: AgentSyncConfiguration(
+        claudeHome: claudeHome,
+        codexHome: codexHome,
+        opencodeHome: opencodeHome,
+        stateDirectory: stateDirectory
+    ))
+    _ = try engine.prepareResume(
+        provider: .opencode,
+        sourcePath: "ses_fixture01",
+        target: .codex,
+        mode: .full
+    )
+
+    let state = try engine.currentState()
+    let mirror = try #require(state.mirrorsByNativeSession.values.first { $0.targetProvider == .codex })
+    let objects = try LineJSON.readObjects(from: URL(fileURLWithPath: mirror.targetPath))
+    let messageIDs = objects.compactMap { object -> String? in
+        guard object.string("type") == "response_item",
+              let payload = object.object("payload"),
+              payload.string("type") == "message" else {
+            return nil
+        }
+        return payload.string("id")
+    }
+
+    #expect(!messageIDs.isEmpty)
+    #expect(messageIDs.allSatisfy { $0.hasPrefix("msg_") })
+
+    let functionCallIDs = objects.compactMap { object -> String? in
+        guard object.string("type") == "response_item",
+              let payload = object.object("payload"),
+              payload.string("type") == "function_call" else {
+            return nil
+        }
+        return payload.string("id")
+    }
+
+    #expect(!functionCallIDs.isEmpty)
+    #expect(functionCallIDs.allSatisfy { $0.hasPrefix("fc_") })
+}
+
 @Test func openCodeExportBuilderProducesImportableShape() throws {
     let base = Date(timeIntervalSince1970: 1_783_000_701)
     let session = CanonicalSession(
