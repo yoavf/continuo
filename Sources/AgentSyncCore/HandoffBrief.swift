@@ -1,11 +1,53 @@
 import Foundation
 
 public enum ResumeMode: String, CaseIterable, Sendable {
-    /// Full transcript when it fits the context budget, handoff brief when a
-    /// full render would have to truncate.
+    /// Legacy CLI/default value: full transcript when it fits, handoff when it
+    /// does not. The app UI presents concrete outcomes instead.
     case auto
     case full
+    case bookends
     case handoff
+}
+
+/// Keeps the beginning and end of the human conversation while dropping the
+/// large, noisy middle: every tool call/result and older middle exchange.
+func bookendSession(from session: CanonicalSession) -> CanonicalSession {
+    let messages = session.events.filter {
+        $0.kind == "message" && ($0.role == .user || $0.role == .assistant) && !isProviderLocalNoise($0.text)
+    }
+    let openingCount = 4
+    let recentCount = 8
+    let opening = Array(messages.prefix(openingCount))
+    let openingIDs = Set(opening.map(\.id))
+    let recent = messages.suffix(recentCount).filter { !openingIDs.contains($0.id) }
+    let selected = (opening + recent).map { event in
+        var trimmed = event
+        trimmed.text = boundedTranscriptText(event.text, limit: 4_000)
+        return trimmed
+    }
+    let keptSourceMessages = opening.count + recent.count
+    let omittedMessages = max(0, messages.count - keptSourceMessages)
+    let toolEvents = session.events.filter { $0.role == .tool }.count
+    let notice = CanonicalEvent(
+        id: "bookends:\(session.id):notice",
+        sourceProvider: session.sourceProvider,
+        sourceEventID: "bookends-notice",
+        timestamp: session.createdAt,
+        role: .user,
+        kind: "message",
+        text: """
+        [Continuo transcript bookends]
+        This continuation keeps the first \(opening.count) and latest \(recent.count) conversation messages from "\(session.title)".
+        It omits \(omittedMessages) middle conversation messages and \(toolEvents) tool call/result events.
+        Full history: \(sourceLocationDescription(session)).
+        Continue from the latest exchange below, using the current repository state as ground truth.
+        """
+    )
+
+    var reduced = session
+    reduced.events = [notice] + selected
+    appendLatestRequestIfNeeded(to: &reduced, messages: messages, idPrefix: "bookends")
+    return reduced
 }
 
 /// Builds the compact "handoff" variant of a session: a template-generated
@@ -15,7 +57,7 @@ func handoffSession(from session: CanonicalSession, aiSummary: String? = nil) ->
     let messages = session.events.filter {
         $0.kind == "message" && ($0.role == .user || $0.role == .assistant) && !isProviderLocalNoise($0.text)
     }
-    let recentCount = 20
+    let recentCount = 8
     let tail = messages.suffix(recentCount).map { event in
         var trimmed = event
         trimmed.text = boundedTranscriptText(event.text, limit: 4_000)
@@ -38,16 +80,24 @@ func handoffSession(from session: CanonicalSession, aiSummary: String? = nil) ->
     // The handoff always ends on the user's most recent request, so the
     // resumed agent is positioned to act on it rather than on its own last
     // reply.
+    appendLatestRequestIfNeeded(to: &reduced, messages: messages, idPrefix: "handoff")
+    return reduced
+}
+
+private func appendLatestRequestIfNeeded(
+    to reduced: inout CanonicalSession,
+    messages: [CanonicalEvent],
+    idPrefix: String
+) {
     if let lastUser = messages.last(where: { $0.role == .user }),
        reduced.events.last?.role != .user {
         var reminder = lastUser
-        reminder.id = "handoff:\(session.id):latest-request"
-        reminder.sourceEventID = "handoff-latest-request"
-        reminder.timestamp = session.updatedAt
+        reminder.id = "\(idPrefix):\(reduced.id):latest-request"
+        reminder.sourceEventID = "\(idPrefix)-latest-request"
+        reminder.timestamp = reduced.updatedAt
         reminder.text = "My latest request, repeated so you can continue from it:\n\(boundedTranscriptText(lastUser.text, limit: 4_000))"
         reduced.events.append(reminder)
     }
-    return reduced
 }
 
 /// Where the untruncated source conversation lives, in a form the resumed
@@ -61,16 +111,32 @@ public func sourceLocationDescription(_ session: CanonicalSession) -> String {
     }
 }
 
-/// Compact digest of a session for an on-device summarizer: user messages and
-/// the final assistant reply, capped for a small context window.
+/// Compact, evenly sampled digest for the on-device summarizer. Sampling
+/// across the whole thread is more faithful than filling the small context
+/// window from the beginning and silently losing the ending.
 public func handoffSummaryInput(for session: CanonicalSession, limit: Int = 12_000) -> String {
+    let messages = session.events.filter {
+        $0.kind == "message"
+            && ($0.role == .user || $0.role == .assistant)
+            && !looksLikeInjectedContext($0.text)
+    }
+    let maximumEntries = 50
+    let sampled: [CanonicalEvent]
+    if messages.count <= maximumEntries {
+        sampled = messages
+    } else {
+        let step = Double(messages.count - 1) / Double(maximumEntries - 1)
+        let indices = (0..<maximumEntries).map { Int((Double($0) * step).rounded()) }
+        sampled = indices.map { messages[$0] }
+    }
+    let entryLimit = max(120, min(500, limit / max(1, sampled.count) - 16))
     var parts: [String] = []
-    for event in session.events where event.kind == "message" && !looksLikeInjectedContext(event.text) {
+    for event in sampled {
         switch event.role {
         case .user:
-            parts.append("USER: \(boundedTranscriptText(event.text, limit: 600))")
+            parts.append("USER: \(boundedTranscriptText(event.text, limit: entryLimit))")
         case .assistant:
-            parts.append("ASSISTANT: \(boundedTranscriptText(event.text, limit: 400))")
+            parts.append("ASSISTANT: \(boundedTranscriptText(event.text, limit: entryLimit))")
         default:
             break
         }

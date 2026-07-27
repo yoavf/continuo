@@ -56,6 +56,7 @@ enum Intelligence {
         }
         let prompt = """
         Summarize this coding-assistant conversation in 8-14 terse bullet lines covering: the goal, key decisions and their reasons, concrete artifacts touched (files, features, commands), current state, and open next steps. Keep concrete names; no preamble.
+        Refer to artifacts by path instead of repeating their contents. Omit credentials, tokens, personal information, and other sensitive values.
 
         Conversation:
         \(input)

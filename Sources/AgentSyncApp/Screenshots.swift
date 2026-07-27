@@ -1,6 +1,6 @@
 import AgentSyncCore
 import AppKit
-import ScreenCaptureKit
+@preconcurrency import ScreenCaptureKit
 import SwiftUI
 
 /// Dev-only screenshot generator for the README. Runs when the app is launched
@@ -45,13 +45,38 @@ enum Screenshots {
             .claude: ["claude-opus-4-8", "claude-sonnet-5", "claude-haiku-4-5"],
             .codex: ["gpt-5.5", "gpt-5.1-codex", "gpt-5.1-codex-mini"]
         ]
+        let resultModel = AppModel(demo: true)
+        resultModel.sessions = model.sessions
+        resultModel.preparedConversion = PreparedConversion(
+            itemID: demoSessions()[0].id,
+            ticket: ResumeTicket(
+                targetProvider: .codex,
+                targetSessionID: "019f9fdf-742e-71a2-8719-417ab9783a0d",
+                workingDirectory: demoSessions()[0].preview.cwd,
+                usedHandoff: true,
+                effectiveMode: .handoff,
+                sourceEventCount: 184,
+                transferredEventCount: 22,
+                estimatedTransferredTokens: 6_400
+            ),
+            targetModel: "gpt-5.5",
+            terminal: .terminal,
+            codexDestination: .chatGPTDesktop,
+            claudeDestination: .cli,
+            opencodeDestination: .cli,
+            launchPreparation: .standard
+        )
+        var oversized = demoSessions()[0]
+        oversized.preview.estimatedTokens = 520_000
 
         NSApp.setActivationPolicy(.regular)
         NSApp.activate(ignoringOtherApps: true)
 
         let jobs = [
             Job(name: "picker", width: 480, height: nil, view: AnyView(SessionPickerView(model: model))),
-            Job(name: "continue", width: 480, height: nil, view: AnyView(ContinueView(model: model, item: demoSessions()[0], onDismiss: {}))),
+            Job(name: "continue", width: 480, height: 650, view: AnyView(ContinueView(model: model, item: demoSessions()[0], onDismiss: {}))),
+            Job(name: "continue-oversized", width: 480, height: 650, view: AnyView(ContinueView(model: model, item: oversized, onDismiss: {}))),
+            Job(name: "conversion-result", width: 480, height: 540, view: AnyView(ContinueView(model: resultModel, item: demoSessions()[0], onDismiss: {}))),
             Job(name: "settings", width: 600, height: 620, view: AnyView(SettingsView(model: model)))
         ]
         run(jobs, index: 0)

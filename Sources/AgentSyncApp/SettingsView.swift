@@ -33,6 +33,7 @@ private struct GeneralSettingsTab: View {
     @AppStorage(Prefs.preferredTerminalKey) private var preferredTerminal = TerminalApp.terminal.rawValue
     @AppStorage(Prefs.codexLaunchDestinationKey) private var codexLaunchDestination = CodexLaunchDestination.cli.rawValue
     @AppStorage(Prefs.claudeLaunchDestinationKey) private var claudeLaunchDestination = ClaudeLaunchDestination.cli.rawValue
+    @AppStorage(Prefs.opencodeLaunchDestinationKey) private var opencodeLaunchDestination = OpenCodeLaunchDestination.cli.rawValue
     @AppStorage(Prefs.claudeHomeKey) private var claudeHomePath = Prefs.claudeHomePath
     @AppStorage(Prefs.codexHomeKey) private var codexHomePath = Prefs.codexHomePath
     @AppStorage(Prefs.opencodeHomeKey) private var opencodeHomePath = Prefs.opencodeHomePath
@@ -72,6 +73,13 @@ private struct GeneralSettingsTab: View {
                 }
                 .pickerStyle(.menu)
 
+                Picker("Open OpenCode in", selection: $opencodeLaunchDestination) {
+                    ForEach(OpenCodeLaunchDestination.allCases) { destination in
+                        Text(destination.displayName).tag(destination.rawValue)
+                    }
+                }
+                .pickerStyle(.menu)
+
                 Picker("Terminal app", selection: $preferredTerminal) {
                     ForEach(TerminalApp.installed) { terminal in
                         Text(terminal.displayName).tag(terminal.rawValue)
@@ -98,7 +106,9 @@ private struct GeneralSettingsTab: View {
             } header: {
                 Text("Opening")
             } footer: {
-                if codexLaunchDestination == CodexLaunchDestination.chatGPTDesktop.rawValue {
+                if codexLaunchDestination == CodexLaunchDestination.chatGPTDesktop.rawValue
+                    || claudeLaunchDestination == ClaudeLaunchDestination.claudeDesktop.rawValue
+                    || opencodeLaunchDestination == OpenCodeLaunchDestination.desktop.rawValue {
                     Text("Desktop destinations open imported sessions in their app; CLI destinations use the terminal below.")
                 } else if preferredTerminal == TerminalApp.cmux.rawValue {
                     Text(
@@ -392,7 +402,6 @@ private struct ModelSettingsTab: View {
     @AppStorage(Prefs.codexTargetModelKey) private var codexTargetModel = Prefs.codexTargetModel
     @AppStorage(Prefs.claudeTargetModelKey) private var claudeTargetModel = Prefs.claudeTargetModel
     @AppStorage(Prefs.opencodeResumeModelKey) private var opencodeResumeModel = ""
-    @AppStorage(Prefs.transferModeKey) private var transferMode = ResumeMode.auto.rawValue
 
     @State private var pairs = Prefs.modelPairs()
 
@@ -427,19 +436,6 @@ private struct ModelSettingsTab: View {
 
     var body: some View {
         Form {
-            Section {
-                Picker("Carry over", selection: $transferMode) {
-                    Text("Auto — full when it fits, brief otherwise").tag(ResumeMode.auto.rawValue)
-                    Text("Always full transcript (trimmed if needed)").tag(ResumeMode.full.rawValue)
-                    Text("Always handoff brief").tag(ResumeMode.handoff.rawValue)
-                }
-                .pickerStyle(.menu)
-            } header: {
-                Text("Transfer")
-            } footer: {
-                Text("A handoff brief is a compact summary plus the most recent turns, ending on your latest request.")
-            }
-
             Section {
                 if claudeModels.isEmpty {
                     Text("No models observed yet — open the picker once to scan sessions.")

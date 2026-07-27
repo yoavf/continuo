@@ -16,7 +16,16 @@ public struct OpenCodeAdapter: Sendable {
     /// most recently used one. OpenCode ignores the models stamped on imported
     /// messages and continues with the user's own configuration, so transfer
     /// budgets must target this, not the mapped model.
+    ///
+    /// Memoized briefly: the popover resolves this from SwiftUI `body`
+    /// evaluations, and each uncached call blocks on a sqlite3 subprocess.
     public func mostRecentModel(opencodeHome: URL) -> String? {
+        Self.recentModelCache.value(for: opencodeHome) {
+            uncachedMostRecentModel(opencodeHome: opencodeHome)
+        }
+    }
+
+    private func uncachedMostRecentModel(opencodeHome: URL) -> String? {
         let database = Self.databaseURL(opencodeHome: opencodeHome)
         guard FileManager.default.fileExists(atPath: database.path) else {
             return nil
@@ -27,6 +36,8 @@ public struct OpenCodeAdapter: Sendable {
         )) ?? []
         return Self.modelReference(fromColumn: rows.first?.string("model"))
     }
+
+    private static let recentModelCache = RecentModelCache()
 
     public func importSession(sessionID: String, opencodeHome: URL) throws -> CanonicalSession? {
         let database = Self.databaseURL(opencodeHome: opencodeHome)
@@ -267,5 +278,27 @@ enum OpenCodeSQL {
             }
             return object
         }
+    }
+}
+
+/// Short-TTL memo for `mostRecentModel`. Without it, a SwiftUI `body` pass
+/// (or `AppModel.prepareResume` on the main thread) spawns a sqlite3 child
+/// process per read; 15s keeps repeated reads cheap while tracking model
+/// switches between popover opens.
+private final class RecentModelCache: @unchecked Sendable {
+    private let lock = NSLock()
+    private var entries: [String: (model: String?, fetchedAt: Date)] = [:]
+    private let ttl: TimeInterval = 15
+
+    func value(for opencodeHome: URL, fetch: () -> String?) -> String? {
+        lock.lock()
+        defer { lock.unlock() }
+        let key = opencodeHome.path
+        if let entry = entries[key], Date().timeIntervalSince(entry.fetchedAt) < ttl {
+            return entry.model
+        }
+        let model = fetch()
+        entries[key] = (model, Date())
+        return model
     }
 }

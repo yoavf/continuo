@@ -106,7 +106,7 @@ public extension OpenCodeAdapter {
         var messages: [JSONValue] = []
         var toolPartLocation: [String: (message: Int, part: Int)] = [:]
         var messageCounter = 0
-        var previousMessageID: String?
+        var latestUserMessageID: String?
 
         func millis(_ date: Date) -> JSONValue {
             .number((date.timeIntervalSince1970 * 1000).rounded())
@@ -146,7 +146,7 @@ public extension OpenCodeAdapter {
                 "time": .object(["created": millis(timestamp)])
             ]
             if role == "assistant" {
-                info["parentID"] = .string(previousMessageID ?? id)
+                info["parentID"] = .string(latestUserMessageID ?? id)
                 info["providerID"] = .string(pieces.provider)
                 info["modelID"] = .string(pieces.id)
                 info["mode"] = .string("build")
@@ -167,9 +167,9 @@ public extension OpenCodeAdapter {
                     "modelID": .string(pieces.id)
                 ])
                 info["summary"] = .object(["diffs": .array([])])
+                latestUserMessageID = id
             }
             messages.append(.object(["info": .object(info), "parts": .array(parts)]))
-            previousMessageID = id
             return (id, messages.count - 1)
         }
 
@@ -213,7 +213,16 @@ public extension OpenCodeAdapter {
                     role: "assistant",
                     model: defaultModel,
                     timestamp: event.timestamp,
-                    parts: [.object(["type": .string("reasoning"), "text": .string(event.text)])]
+                    parts: [
+                        .object([
+                            "type": .string("reasoning"),
+                            "text": .string(event.text),
+                            "time": .object([
+                                "start": millis(event.timestamp),
+                                "end": millis(event.timestamp)
+                            ])
+                        ])
+                    ]
                 )
                 nativeEventIDs.append("opencode:\(targetSessionID):\(message.id):reasoning:0")
             case .tool:
@@ -269,7 +278,12 @@ public extension OpenCodeAdapter {
             "version": .string(installedVersion(database: database)),
             "time": .object([
                 "created": millis(session.createdAt),
-                "updated": millis(session.updatedAt)
+                // The mirror was created now even though its conversation
+                // events retain their original timestamps. OpenCode Desktop's
+                // supported open-project deep link opens the most recently
+                // updated root session, so it lands on this conversion unless
+                // another session in the same project is touched first.
+                "updated": millis(Date())
             ])
         ]
 

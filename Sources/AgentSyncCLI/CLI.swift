@@ -175,11 +175,16 @@ struct AgentSyncCLI {
             Commands (HOMES = --claude-home PATH --codex-home PATH --state-dir PATH):
               scan HOMES [--lookback-days N] [--max-sessions N]
               sync-once HOMES [--codex-model NAME] [--claude-model NAME] [--lookback-days N] [--max-sessions N]
-              prepare-resume HOMES --provider claude|codex|opencode --path FILE|SESSION_ID [--target AGENT] [--mode auto|full|handoff]
+              prepare-resume HOMES --provider claude|codex|opencode --path FILE|SESSION_ID [--target AGENT] [--mode auto|full|bookends|handoff]
               update-model-catalog --output PATH
               migrate-state --state-dir PATH
               prune-state --state-dir PATH
               e2e [--root PATH]
+
+            Modes: auto renders the full transcript when it fits the target's safe
+            transfer budget and a handoff brief otherwise. full errors instead of
+            trimming when the transcript does not fit; bookends and handoff always
+            compact.
             """
         )
     }

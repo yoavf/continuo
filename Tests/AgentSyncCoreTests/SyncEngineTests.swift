@@ -211,6 +211,10 @@ import Testing
 
     #expect(ticket.targetProvider == .codex)
     #expect(ticket.workingDirectory == fixture.workspace.path)
+    #expect(ticket.sourceEventCount > 0)
+    #expect(ticket.transferredEventCount == ticket.sourceEventCount)
+    #expect(ticket.omittedEventCount == 0)
+    #expect(ticket.estimatedTransferredTokens > 0)
     let state = try engine.currentState()
     let mirror = try #require(state.mirrorsByNativeSession.values.first { $0.targetProvider == .codex })
     #expect(ticket.targetSessionID == mirror.targetSessionID)
@@ -348,7 +352,15 @@ import Testing
 
     #expect(!full.usedHandoff)
     #expect(handoff.usedHandoff)
+    #expect(full.effectiveMode == .full)
+    #expect(handoff.effectiveMode == .handoff)
     #expect(handoff.targetSessionID != full.targetSessionID)
+    #expect(handoff.sourceEventCount == full.sourceEventCount)
+    #expect(handoff.transferredEventCount > 0)
+    #expect(handoff.transferredEventCount <= handoff.sourceEventCount)
+    // Only the two conversation messages survive a handoff; tool traffic is omitted.
+    #expect(handoff.omittedEventCount == handoff.sourceEventCount - 2)
+    #expect(handoff.estimatedTransferredTokens > 0)
 
     let state = try engine.currentState()
     let handoffMirror = try #require(state.mirrorsByNativeSession.values.first {
@@ -364,6 +376,176 @@ import Testing
     let auto = try engine.prepareResume(provider: .claude, sourcePath: claudeSource.path, mode: .auto)
     #expect(!auto.usedHandoff)
     #expect(auto.targetSessionID == full.targetSessionID)
+}
+
+@Test func fullResumeAfterContinuationInCompactedMirrorRendersFreshFullMirror() throws {
+    let root = URL(fileURLWithPath: NSTemporaryDirectory(), isDirectory: true)
+        .appendingPathComponent("agent-sync-full-after-handoff-\(UUID().uuidString.lowercased())", isDirectory: true)
+    defer { try? FileManager.default.removeItem(at: root) }
+
+    let fixture = AgentSyncFixtureBuilder(root: root)
+    try fixture.create()
+    let claudeSource = fixture.claudeHome
+        .appendingPathComponent("projects", isDirectory: true)
+        .appendingPathComponent(PathEncoding.claudeProjectName(for: fixture.workspace.path), isDirectory: true)
+        .appendingPathComponent("11111111-1111-4111-8111-111111111111.jsonl")
+
+    let engine = SyncEngine(configuration: fixture.configuration())
+    let handoff = try engine.prepareResume(
+        provider: .claude,
+        sourcePath: claudeSource.path,
+        target: .codex,
+        mode: .handoff
+    )
+    let stateAfterHandoff = try engine.currentState()
+    let handoffMirror = try #require(stateAfterHandoff.mirrorsByNativeSession.values.first {
+        $0.targetSessionID == handoff.targetSessionID
+    })
+    #expect(handoffMirror.kind == .handoff)
+
+    // The user keeps talking inside the compacted mirror; those turns are
+    // imported back, making the target side the freshest.
+    try appendCodexContinuation(
+        to: URL(fileURLWithPath: handoffMirror.targetPath),
+        sessionID: handoffMirror.targetSessionID,
+        userText: "Continue after the handoff.",
+        assistantText: "Post-handoff turn captured.",
+        timestamp: Date(timeIntervalSince1970: 1_783_000_301)
+    )
+    _ = try engine.syncOnce()
+
+    // A full resume must not reopen the compacted mirror: it renders a fresh
+    // full mirror carrying everything, including the post-handoff turns.
+    let full = try engine.prepareResume(
+        provider: .claude,
+        sourcePath: claudeSource.path,
+        target: .codex,
+        mode: .full
+    )
+
+    #expect(full.effectiveMode == .full)
+    #expect(full.targetSessionID != handoff.targetSessionID)
+    #expect(full.transferredEventCount == full.sourceEventCount)
+    #expect(full.omittedEventCount == 0)
+
+    let finalState = try engine.currentState()
+    let freshMirror = try #require(finalState.mirrorsByNativeSession.values.first {
+        $0.targetSessionID == full.targetSessionID
+    })
+    #expect(freshMirror.kind == .full)
+    let freshText = try String(contentsOfFile: freshMirror.targetPath, encoding: .utf8)
+    #expect(freshText.contains("Build a tiny parser in Swift."))
+    #expect(freshText.contains("Continue after the handoff."))
+}
+
+@Test func bookendsKeepOpeningAndLatestMessagesWithoutToolTraffic() {
+    let base = Date(timeIntervalSince1970: 1_783_000_000)
+    let messages = (0..<40).map { index in
+        CanonicalEvent(
+            id: "message-\(index)",
+            sourceProvider: .claude,
+            sourceEventID: "message-\(index)",
+            timestamp: base.addingTimeInterval(Double(index)),
+            role: index.isMultiple(of: 2) ? .user : .assistant,
+            kind: "message",
+            text: "Conversation message \(index)"
+        )
+    }
+    let tools = (0..<10).map { index in
+        CanonicalEvent(
+            id: "tool-\(index)",
+            sourceProvider: .claude,
+            sourceEventID: "tool-\(index)",
+            timestamp: base.addingTimeInterval(Double(index) + 0.5),
+            role: .tool,
+            kind: index.isMultiple(of: 2) ? "tool_use" : "tool_result",
+            text: "Tool traffic \(index)"
+        )
+    }
+    let session = CanonicalSession(
+        id: "bookend-session",
+        sourceProvider: .claude,
+        sourceSessionID: "source-session",
+        sourcePath: "/tmp/source-session.jsonl",
+        title: "Long conversation",
+        cwd: "/tmp",
+        createdAt: base,
+        updatedAt: base.addingTimeInterval(50),
+        model: "claude-sonnet-5",
+        contributingProviders: [.claude],
+        events: (messages + tools).sorted { $0.timestamp < $1.timestamp }
+    )
+
+    let reduced = bookendSession(from: session)
+
+    #expect(reduced.events.allSatisfy { $0.role != .tool })
+    #expect(reduced.events.contains { $0.id == "message-0" })
+    #expect(reduced.events.contains { $0.id == "message-39" })
+    #expect(!reduced.events.contains { $0.id == "message-10" })
+    #expect(reduced.events.first?.text.contains("omits 28 middle conversation messages and 10 tool call/result events") == true)
+    #expect(reduced.events.last?.text.contains("Conversation message 38") == true)
+}
+
+@Test func originalTranscriptIsRejectedWhenItDoesNotFitButBookendsRemainAvailable() throws {
+    let root = URL(fileURLWithPath: NSTemporaryDirectory(), isDirectory: true)
+        .appendingPathComponent("agent-sync-oversized-\(UUID().uuidString.lowercased())", isDirectory: true)
+    defer { try? FileManager.default.removeItem(at: root) }
+
+    let fixture = AgentSyncFixtureBuilder(root: root)
+    try fixture.create()
+    let source = fixture.claudeHome
+        .appendingPathComponent("projects", isDirectory: true)
+        .appendingPathComponent(PathEncoding.claudeProjectName(for: fixture.workspace.path), isDirectory: true)
+        .appendingPathComponent("11111111-1111-4111-8111-111111111111.jsonl")
+    let oversized: [[String: JSONValue]] = (0..<40).map { index in
+        [
+            "type": .string(index.isMultiple(of: 2) ? "user" : "assistant"),
+            "sessionId": .string("11111111-1111-4111-8111-111111111111"),
+            "uuid": .string("claude-oversized-\(index)"),
+            "parentUuid": .string(index == 0 ? "claude-user-2" : "claude-oversized-\(index - 1)"),
+            "timestamp": .string("2026-07-26T20:00:\(String(format: "%02d", index)).000Z"),
+            "cwd": .string(fixture.workspace.path),
+            "userType": .string("external"),
+            "version": .string("fixture"),
+            "message": .object([
+                "role": .string(index.isMultiple(of: 2) ? "user" : "assistant"),
+                "type": .string("message"),
+                "id": .string("msg_fixture_oversized_\(index)"),
+                "model": .string("claude-opus-fixture"),
+                "content": .array([.object([
+                    "type": .string("text"),
+                    "text": .string(String(repeating: "oversized transcript payload \(index) ", count: 2_500))
+                ])])
+            ])
+        ]
+    }
+    let original = try String(contentsOf: source, encoding: .utf8)
+    try (original + "\n" + LineJSON.renderObjects(oversized)).write(to: source, atomically: true, encoding: .utf8)
+    let engine = SyncEngine(configuration: fixture.configuration())
+
+    do {
+        _ = try engine.prepareResume(
+            provider: .claude,
+            sourcePath: source.path,
+            target: .codex,
+            mode: .full
+        )
+        Issue.record("Expected an oversized original transcript to be rejected.")
+    } catch {
+        #expect(String(describing: error).contains("does not fit"))
+    }
+
+    let bookends = try engine.prepareResume(
+        provider: .claude,
+        sourcePath: source.path,
+        target: .codex,
+        mode: .bookends
+    )
+    #expect(bookends.effectiveMode == .bookends)
+    #expect(bookends.estimatedTransferredTokens < 40_000)
+    // Bookends keeps the first 4 and latest 8 of the 42 messages; everything
+    // else (middle messages, tool traffic) is counted as omitted.
+    #expect(bookends.omittedEventCount == bookends.sourceEventCount - 12)
 }
 
 @Test func toolNamesRenderInTheTargetAgentsVocabulary() throws {
@@ -1438,9 +1620,65 @@ private func appendJSONL(_ objects: [[String: JSONValue]], to url: URL) throws {
     #expect(assistantMessage.object("info")?.string("modelID") == "claude-fable-5")
     #expect(assistantMessage.object("info")?.string("providerID") == "anthropic")
 
+    // OpenCode Desktop loads assistant messages as children of a user turn.
+    // Tool and text assistant messages in the same turn must not form an
+    // assistant → assistant chain.
+    let messageInfo = messages.compactMap(\.objectValue).compactMap { $0.object("info") }
+    let rolesByID = Dictionary(
+        uniqueKeysWithValues: messageInfo.compactMap { info in
+            info.string("id").map { ($0, info.string("role")) }
+        }
+    )
+    for info in messageInfo where info.string("role") == "assistant" {
+        let parentID = try #require(info.string("parentID"))
+        #expect(rolesByID[parentID] == "user")
+    }
+
     // Echo-guard ids cover every rendered event.
     #expect(built.nativeEventIDs.contains("opencode:ses_agsynctest01:toolu_x"))
     #expect(built.nativeEventIDs.contains("opencode:ses_agsynctest01:toolu_x:output"))
+}
+
+@Test func openCodeReasoningPartsIncludeRequiredTimeRange() throws {
+    let base = Date(timeIntervalSince1970: 1_783_000_701)
+    let session = CanonicalSession(
+        id: "canonical-oc-summary",
+        sourceProvider: .codex,
+        sourceSessionID: "codex-src-summary",
+        sourcePath: "/tmp/summary.jsonl",
+        title: "Summary import",
+        cwd: "/tmp/fixture",
+        createdAt: base,
+        updatedAt: base,
+        model: "gpt-5.5",
+        contributingProviders: [.codex],
+        events: [
+            CanonicalEvent(
+                id: "summary-1",
+                sourceProvider: .codex,
+                sourceEventID: "summary-1",
+                timestamp: base,
+                role: .summary,
+                kind: "summary",
+                text: "Continue from the compacted context."
+            )
+        ]
+    )
+
+    let built = OpenCodeAdapter().buildExport(
+        session: session,
+        targetSessionID: "ses_agsyncsummary01",
+        database: nil,
+        defaultModel: "openai/gpt-5.5",
+        modelMappings: ModelMappingSettings()
+    )
+    let messages = try #require(built.export["messages"]?.arrayValue)
+    let reasoning = try #require(messages.compactMap(\.objectValue).compactMap { message in
+        message["parts"]?.arrayValue?.first?.objectValue
+    }.first { $0.string("type") == "reasoning" })
+    let time = try #require(reasoning.object("time"))
+    #expect(time["start"] != nil)
+    #expect(time["end"] != nil)
 }
 
 private func createOpenCodeFixtureDatabase(_ databaseURL: URL) throws {
