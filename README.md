@@ -1,3 +1,5 @@
+
+
 # Continuo
 
 Continue a coding-agent session in a *different* agent. Continuo is a macOS menu-bar app that converts a recent Claude Code, Codex, or OpenCode session into another agent's native format and opens it already resumed in your chosen session destination — in any direction, on demand.
@@ -16,7 +18,7 @@ brew install --cask yoavf/tap/continuo
 
 Or download the latest `Continuo.dmg` from [Releases](https://github.com/yoavf/continuo/releases), drag it to Applications, and launch it — it's signed and notarized.
 
-Recent sessions from `~/.claude` and `~/.codex` show up automatically. Click the menu-bar icon, or press `⌥⌘S` from anywhere, to see them.
+Recent sessions from `~/.claude`, `~/.codex`, and `~/.config/opencode` show up automatically. Click the menu-bar icon, or press `⌥⌘S` from anywhere, to see them.
 
 ## Using it
 
