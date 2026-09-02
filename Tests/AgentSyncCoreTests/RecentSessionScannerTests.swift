@@ -4,6 +4,51 @@ import Testing
 
 @Suite("Recent session scanner titles")
 struct RecentSessionScannerTests {
+    @Test("duplicate Claude transcript copies produce one picker identity")
+    func duplicateClaudeTranscriptCopies() throws {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent("continuo-duplicate-claude-\(UUID().uuidString)", isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+
+        let claudeHome = root.appendingPathComponent("claude", isDirectory: true)
+        let codexHome = root.appendingPathComponent("codex", isDirectory: true)
+        let opencodeHome = root.appendingPathComponent("opencode", isDirectory: true)
+        let projects = claudeHome.appendingPathComponent("projects", isDirectory: true)
+        let firstProject = projects.appendingPathComponent("-tmp-first", isDirectory: true)
+        let secondProject = projects.appendingPathComponent("-tmp-second", isDirectory: true)
+        try FileManager.default.createDirectory(at: firstProject, withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: secondProject, withIntermediateDirectories: true)
+
+        let sessionID = "11111111-1111-4111-8111-111111111111"
+        let transcript = #"{"sessionId":"\#(sessionID)","cwd":"/tmp/project","type":"user","message":{"role":"user","content":"Visible Claude session"}}"# + "\n"
+        try Data(transcript.utf8).write(
+            to: firstProject.appendingPathComponent("\(sessionID).jsonl")
+        )
+        try Data(transcript.utf8).write(
+            to: secondProject.appendingPathComponent("\(sessionID).jsonl")
+        )
+
+        let otherSessionID = "22222222-2222-4222-8222-222222222222"
+        let otherTranscript = #"{"sessionId":"\#(otherSessionID)","cwd":"/tmp/project","type":"user","message":{"role":"user","content":"Another visible Claude session"}}"# + "\n"
+        let otherURL = secondProject.appendingPathComponent("\(otherSessionID).jsonl")
+        try Data(otherTranscript.utf8).write(to: otherURL)
+        try FileManager.default.setAttributes(
+            [.modificationDate: Date(timeIntervalSinceNow: -60)],
+            ofItemAtPath: otherURL.path
+        )
+
+        let previews = try RecentSessionScanner.scan(
+            claudeHome: claudeHome,
+            codexHome: codexHome,
+            opencodeHome: opencodeHome,
+            lookbackDays: nil,
+            maximumPerProvider: 2
+        )
+
+        #expect(previews.count == 2)
+        #expect(Set(previews.map(\.id)).count == previews.count)
+    }
+
     @Test("provider title metadata is distinguished from a prompt fallback")
     func sourceTitleProvenance() throws {
         let root = FileManager.default.temporaryDirectory

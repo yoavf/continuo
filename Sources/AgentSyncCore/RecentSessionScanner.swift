@@ -203,13 +203,18 @@ public enum RecentSessionScanner {
         guard FileManager.default.fileExists(atPath: root.path) else {
             return []
         }
+        guard maximum > 0 else {
+            return []
+        }
         let files = try discoverJSONLSessionFiles(
             under: root,
             lookbackDays: lookbackDays,
-            maximumSessions: maximum,
+            maximumSessions: nil,
             excludingPathComponents: excludingPathComponents
         )
-        return files.map { url in
+        var previews: [SessionPreview] = []
+        var seenIDs: Set<String> = []
+        for url in files {
             let values = try? url.resourceValues(forKeys: [.contentModificationDateKey, .fileSizeKey])
             let modifiedAt = values?.contentModificationDate ?? Date.distantPast
             // JSONL carries roughly 2x envelope overhead over the raw text, on
@@ -217,14 +222,27 @@ public enum RecentSessionScanner {
             let estimatedTokens = (values?.fileSize ?? 0) / 7
             let prefixObjects = (try? readEdgeObjects(from: url, fromEnd: false)) ?? []
             let tailObjects = (try? readEdgeObjects(from: url, fromEnd: true)) ?? []
+            let preview: SessionPreview
             switch provider {
             case .codex:
-                return codexPreview(url: url, modifiedAt: modifiedAt, estimatedTokens: codexContextTokens(in: tailObjects) ?? estimatedTokens, prefixObjects: prefixObjects, threadTitles: codexTitles)
+                preview = codexPreview(url: url, modifiedAt: modifiedAt, estimatedTokens: codexContextTokens(in: tailObjects) ?? estimatedTokens, prefixObjects: prefixObjects, threadTitles: codexTitles)
             default:
                 // .claude — opencode never reaches the JSONL scan path.
-                return claudePreview(url: url, modifiedAt: modifiedAt, estimatedTokens: claudeContextTokens(in: tailObjects) ?? estimatedTokens, prefixObjects: prefixObjects, tailObjects: tailObjects)
+                preview = claudePreview(url: url, modifiedAt: modifiedAt, estimatedTokens: claudeContextTokens(in: tailObjects) ?? estimatedTokens, prefixObjects: prefixObjects, tailObjects: tailObjects)
+            }
+            // A transcript can be copied between Claude project directories
+            // while retaining its native session ID. Duplicate IDs make
+            // SwiftUI reserve blank picker rows. Files are newest-first, so
+            // keep the first copy and continue until the unique-session limit.
+            guard seenIDs.insert(preview.id).inserted else {
+                continue
+            }
+            previews.append(preview)
+            if previews.count == maximum {
+                break
             }
         }
+        return previews
     }
 
     /// Real context size from the transcript's own records — raw file size
