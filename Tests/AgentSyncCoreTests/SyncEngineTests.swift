@@ -1701,3 +1701,14 @@ private func createOpenCodeFixtureDatabase(_ databaseURL: URL) throws {
     try process.run()
     process.waitUntilExit()
 }
+
+@Test func claudeProjectNameDashesEveryNonAlphanumericCharacter() {
+    #expect(PathEncoding.claudeProjectName(for: "/Users/x/.codex/repo") == "-Users-x--codex-repo")
+    #expect(PathEncoding.claudeProjectName(for: "/Users/x/Library/Application Support/my_app") == "-Users-x-Library-Application-Support-my-app")
+    #expect(PathEncoding.claudeProjectName(for: "/Users/x/com~apple~CloudDocs/a+b@c") == "-Users-x-com-apple-CloudDocs-a-b-c")
+    // One dash per UTF-16 unit, like Claude Code's JS regex: "é" is one unit,
+    // an astral emoji is two.
+    #expect(PathEncoding.claudeProjectName(for: "/tmp/café") == "-tmp-caf-")
+    #expect(PathEncoding.claudeProjectName(for: "/tmp/🚀") == "-tmp---")
+    #expect(PathEncoding.claudeProjectName(for: "") == "-unknown")
+}

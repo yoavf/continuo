@@ -56,6 +56,11 @@ struct SessionPickerView: View {
         }
         .frame(width: 480)
         .onAppear {
+            // The hotkey panel builds a fresh picker each time, so a review
+            // page abandoned by closing the panel must not come back.
+            if selectedItem == nil {
+                model.clearPreparedConversion()
+            }
             model.refresh()
         }
         .alert(item: $model.terminalSetupAlert) { setupAlert in

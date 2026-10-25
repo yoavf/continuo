@@ -122,7 +122,8 @@ public extension OpenCodeAdapter {
         func newMessageID() -> String {
             messageCounter += 1
             let suffix = UUID().uuidString.replacingOccurrences(of: "-", with: "").lowercased().prefix(18)
-            return "msg_agsync\(String(format: "%03d", messageCounter))\(suffix)"
+            // Fixed width keeps IDs sorting in order past the 999th message.
+            return "msg_agsync\(String(format: "%06d", messageCounter))\(suffix)"
         }
 
         func appendMessage(role: String, model: String, timestamp: Date, parts rawParts: [JSONValue]) -> (id: String, index: Int) {
@@ -191,7 +192,11 @@ public extension OpenCodeAdapter {
                 continue
             }
             switch event.role {
-            case .user, .developer, .system:
+            case .developer, .system:
+                // Harness instructions (Codex sandbox/permission blocks) are
+                // not things the user typed; the Claude renderer skips them too.
+                continue
+            case .user:
                 let message = appendMessage(
                     role: "user",
                     model: defaultModel,

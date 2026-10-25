@@ -64,15 +64,19 @@ public enum ModelCatalog {
     /// Blocking GET of the models.dev catalog; nil on any non-200 or timeout.
     private static func fetchCatalogData(timeout: TimeInterval) -> Data? {
         let semaphore = DispatchSemaphore(value: 0)
-        var fetched: Data?
-        URLSession.shared.dataTask(with: sourceURL) { data, response, _ in
+        let fetched = FetchResult()
+        let task = URLSession.shared.dataTask(with: sourceURL) { data, response, _ in
             if let http = response as? HTTPURLResponse, http.statusCode == 200 {
-                fetched = data
+                fetched.set(data)
             }
             semaphore.signal()
-        }.resume()
-        _ = semaphore.wait(timeout: .now() + timeout)
-        return fetched
+        }
+        task.resume()
+        guard semaphore.wait(timeout: .now() + timeout) == .success else {
+            task.cancel()
+            return nil
+        }
+        return fetched.get()
     }
 
     /// Usable input tokens for a model, matched as "provider/model" or bare
@@ -130,5 +134,24 @@ public enum ModelCatalog {
         lock.lock()
         contexts = map.reduce(into: [:]) { $0[$1.key.lowercased()] = $1.value }
         lock.unlock()
+    }
+}
+
+/// The completion handler can still be running when a timed-out fetch
+/// returns, so its result crosses threads behind a lock.
+private final class FetchResult: @unchecked Sendable {
+    private let lock = NSLock()
+    private var data: Data?
+
+    func set(_ data: Data?) {
+        lock.lock()
+        defer { lock.unlock() }
+        self.data = data
+    }
+
+    func get() -> Data? {
+        lock.lock()
+        defer { lock.unlock() }
+        return data
     }
 }

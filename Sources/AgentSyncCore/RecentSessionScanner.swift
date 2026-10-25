@@ -450,22 +450,24 @@ public enum RecentSessionScanner {
         let handle = try FileHandle(forReadingFrom: url)
         defer { try? handle.close() }
         let data: Data
+        var startsMidFile = false
         if fromEnd {
             let size = (try? handle.seekToEnd()) ?? 0
             let offset = size > UInt64(maximumBytes) ? size - UInt64(maximumBytes) : 0
+            startsMidFile = offset > 0
             try handle.seek(toOffset: offset)
             data = try handle.readToEnd() ?? Data()
         } else {
             data = try handle.read(upToCount: maximumBytes) ?? Data()
         }
-        guard let text = String(data: data, encoding: .utf8) else {
-            return []
-        }
+        // A byte cut can split a multibyte character at either edge; decode
+        // leniently so that only the partial edge line is lost, not the chunk.
+        let text = String(decoding: data, as: UTF8.self)
 
         var lines = text.split(separator: "\n", omittingEmptySubsequences: true)
         if fromEnd {
             // The first chunk-line may be a partial JSON record; drop it.
-            if !lines.isEmpty {
+            if startsMidFile, !lines.isEmpty {
                 lines.removeFirst()
             }
             lines = Array(lines.suffix(maximumLines))

@@ -177,7 +177,8 @@ public func looksLikeInjectedContext(_ text: String) -> Bool {
         return true
     }
     let prefixes = [
-        "Caveat:", "[Continuo handoff brief]", "Continuo mirrored this conversation"
+        "Caveat:", "[Continuo handoff brief]", "[Continuo transcript bookends]",
+        "Continuo mirrored this conversation"
     ]
     let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
     return prefixes.contains { trimmed.hasPrefix($0) }

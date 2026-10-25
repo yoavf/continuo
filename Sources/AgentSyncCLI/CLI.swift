@@ -33,8 +33,8 @@ struct AgentSyncCLI {
                   let path = value(after: "--path", in: args) else {
                 throw AgentSyncError.invalidArguments("prepare-resume requires --provider claude|codex and --path FILE plus the home/state flags")
             }
-            let mode = value(after: "--mode", in: args).flatMap(ResumeMode.init(rawValue:)) ?? .auto
-            let target = value(after: "--target", in: args).flatMap(AgentKind.init(rawValue:))
+            let mode = try parsed(after: "--mode", in: args, as: ResumeMode.init(rawValue:)) ?? .auto
+            let target = try parsed(after: "--target", in: args, as: AgentKind.init(rawValue:))
             let ticket = try SyncEngine(configuration: config).prepareResume(
                 provider: provider,
                 sourcePath: provider == .opencode ? path : NSString(string: path).expandingTildeInPath,
@@ -151,8 +151,8 @@ struct AgentSyncCLI {
             stateDirectory: URL(fileURLWithPath: NSString(string: stateDir).expandingTildeInPath, isDirectory: true),
             defaultCodexModel: value(after: "--codex-model", in: args) ?? "gpt-5.5",
             defaultClaudeModel: value(after: "--claude-model", in: args) ?? "claude-sonnet-5",
-            sessionLookbackDays: intValue(after: "--lookback-days", in: args) ?? 14,
-            maximumImportedSessions: intValue(after: "--max-sessions", in: args) ?? 3
+            sessionLookbackDays: try intValue(after: "--lookback-days", in: args) ?? 14,
+            maximumImportedSessions: try intValue(after: "--max-sessions", in: args) ?? 3
         )
     }
 
@@ -163,8 +163,20 @@ struct AgentSyncCLI {
         return args[index + 1]
     }
 
-    private static func intValue(after flag: String, in args: [String]) -> Int? {
-        value(after: flag, in: args).flatMap(Int.init)
+    private static func intValue(after flag: String, in args: [String]) throws -> Int? {
+        try parsed(after: flag, in: args, as: Int.init)
+    }
+
+    /// Nil when the flag is absent; throws when it is present but unparsable,
+    /// so a typo like `--mode ful` fails instead of silently using the default.
+    private static func parsed<T>(after flag: String, in args: [String], as parse: (String) -> T?) throws -> T? {
+        guard let raw = value(after: flag, in: args) else {
+            return nil
+        }
+        guard let parsedValue = parse(raw) else {
+            throw AgentSyncError.invalidArguments("invalid value for \(flag): \(raw)")
+        }
+        return parsedValue
     }
 
     private static func printUsage() {

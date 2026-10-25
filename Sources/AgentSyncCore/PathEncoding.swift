@@ -1,15 +1,23 @@
 import Foundation
 
 public enum PathEncoding {
-    /// Claude Code encodes a project cwd by replacing "/" AND "." with "-"
-    /// (verified by letting Claude create a session from a dotted cwd:
-    /// /Users/x/.codex/… → -Users-x--codex-…). Dotted-looking folders with
-    /// preserved "." exist on disk from an older Claude version, but current
-    /// resume resolution only reads the dashed form.
+    /// Claude Code encodes a project cwd by replacing every character outside
+    /// [A-Za-z0-9] with "-", one dash per UTF-16 code unit (its JS
+    /// `replace(/[^a-zA-Z0-9]/g, "-")`): /Users/x/.codex → -Users-x--codex,
+    /// "Application Support" → Application-Support, my_app → my-app.
+    /// Dotted-looking folders with preserved "." exist on disk from an older
+    /// Claude version, but current resume resolution only reads the dashed form.
     public static func claudeProjectName(for cwd: String) -> String {
-        let encoded = cwd
-            .replacingOccurrences(of: "/", with: "-")
-            .replacingOccurrences(of: ".", with: "-")
+        let dash = UInt16(UInt8(ascii: "-"))
+        let units = cwd.utf16.map { unit -> UInt16 in
+            switch unit {
+            case 0x30...0x39, 0x41...0x5A, 0x61...0x7A:
+                return unit
+            default:
+                return dash
+            }
+        }
+        let encoded = String(decoding: units, as: UTF16.self)
         return encoded.isEmpty ? "-unknown" : encoded
     }
 
