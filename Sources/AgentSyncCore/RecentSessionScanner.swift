@@ -331,15 +331,13 @@ public enum RecentSessionScanner {
         prefixObjects: [[String: JSONValue]],
         tailObjects: [[String: JSONValue]]
     ) -> SessionPreview {
-        let fallbackID = url.deletingPathExtension().lastPathComponent
-        var sessionID = fallbackID
+        let edgeObjects = prefixObjects + tailObjects
+        let sessionID = claudeSessionID(url: url, objects: edgeObjects)
         var cwd = PathEncoding.decodeClaudeProjectName(url.deletingLastPathComponent().lastPathComponent)
-        var title: String?
         var snippet: String?
         var models: [String] = []
 
         for object in prefixObjects {
-            sessionID = object.string("sessionId") ?? sessionID
             cwd = object.string("cwd") ?? cwd
             if let message = object.object("message") {
                 if let model = message.string("model"), !models.contains(model) {
@@ -347,20 +345,19 @@ public enum RecentSessionScanner {
                 }
                 if snippet == nil,
                    object.string("type") == "user",
-                   let text = previewText(from: message["content"]),
+                   let text = claudePromptPreview(from: message["content"]),
                    !looksLikeInjectedContext(text) {
                     snippet = text
                 }
             }
         }
-        // ai-title lines recur through the file as Claude re-titles; the last
-        // one in the tail is current.
-        for object in (prefixObjects + tailObjects) {
-            if let aiTitle = object.string("aiTitle") {
-                title = aiTitle
+        // Fork prefixes may still describe the parent's working directory.
+        for object in edgeObjects where object.string("sessionId") == sessionID {
+            if let value = object.string("cwd") {
+                cwd = value
             }
         }
-        let sourceTitle = cleanTitle(title)
+        let sourceTitle = claudeSessionTitle(objects: edgeObjects, sessionID: sessionID)
 
         return SessionPreview(
             provider: .claude,
@@ -374,6 +371,27 @@ public enum RecentSessionScanner {
             cwd: cwd,
             updatedAt: modifiedAt
         )
+    }
+
+    private static func claudePromptPreview(from value: JSONValue?) -> String? {
+        // Filter individual content blocks before joining. Claude Desktop puts
+        // worktree reminders in a separate block before the human's request.
+        if case .array(let values) = value {
+            let text = values.compactMap { item -> String? in
+                let text: String?
+                if let object = item.objectValue {
+                    guard object.string("type") == "text" else { return nil }
+                    text = object.string("text")
+                } else {
+                    text = item.stringValue
+                }
+                guard let text, !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+                      !looksLikeInjectedContext(text) else { return nil }
+                return text
+            }.joined(separator: " ")
+            return text.isEmpty ? nil : text
+        }
+        return previewText(from: value)
     }
 
     private static func codexPreview(

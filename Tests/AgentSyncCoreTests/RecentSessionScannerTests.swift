@@ -4,6 +4,72 @@ import Testing
 
 @Suite("Recent session scanner titles")
 struct RecentSessionScannerTests {
+    @Test("Claude forks keep their own identity and custom title despite copied parent history")
+    func claudeForkMetadata() throws {
+        try withClaudeProject { root, project in
+            let parent = "11111111-1111-4111-8111-111111111111"
+            let fork = "22222222-2222-4222-8222-222222222222"
+            let history = """
+            {"type":"user","sessionId":"\(parent)","cwd":"/tmp/parent","message":{"content":"Original request"}}
+            {"type":"custom-title","sessionId":"\(parent)","customTitle":"Parent title"}
+            {"type":"assistant","sessionId":"\(parent)","message":{"content":"\(String(repeating: "x", count: 300_000))"}}
+
+            """
+            try Data(history.utf8).write(to: project.appendingPathComponent("\(parent).jsonl"))
+            let forkURL = project.appendingPathComponent("\(fork).jsonl")
+            try Data((history + """
+            {"type":"custom-title","sessionId":"\(fork)","customTitle":"Fork title"}
+            {"type":"ai-title","sessionId":"\(fork)","aiTitle":"Automatic title"}
+            {"type":"user","sessionId":"\(fork)","cwd":"/tmp/fork","message":{"content":"Try a different approach"}}
+
+            """).utf8).write(to: forkURL)
+            let previews = try scanClaudeProject(root)
+            #expect(previews.count == 2)
+            let preview = try #require(previews.first { $0.sessionID == fork })
+            #expect(preview.title == "Fork title")
+            #expect(preview.hasSourceTitle)
+            #expect(preview.cwd == "/tmp/fork")
+            let imported = try #require(try ClaudeAdapter().importSession(from: forkURL))
+            #expect(imported.sourceSessionID == fork)
+            #expect(imported.title == "Fork title")
+            #expect(imported.cwd == "/tmp/fork")
+        }
+    }
+
+    @Test("Claude prompt fallback keeps human text after an injected content block")
+    func claudePromptAfterInjectedBlock() throws {
+        try withClaudeProject { root, project in
+            let id = "11111111-1111-4111-8111-111111111111"
+            let url = project.appendingPathComponent("\(id).jsonl")
+            let transcript = #"{"type":"user","sessionId":"\#(id)","message":{"content":[{"type":"text","text":"<system-reminder>Worktree context</system-reminder>"},{"type":"text","text":"Fix the session picker"}]}}"# + "\n"
+            try Data(transcript.utf8).write(to: url)
+            let preview = try #require(try scanClaudeProject(root).first)
+            #expect(preview.title == "Fix the session picker")
+            #expect(preview.snippet == "Fix the session picker")
+            #expect(!preview.hasSourceTitle)
+            let imported = try #require(try ClaudeAdapter().importSession(from: url))
+            #expect(imported.title == preview.title)
+        }
+    }
+
+    private func withClaudeProject(_ body: (URL, URL) throws -> Void) throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let project = root.appendingPathComponent("claude/projects/project")
+        try FileManager.default.createDirectory(at: project, withIntermediateDirectories: true)
+        try body(root, project)
+    }
+
+    private func scanClaudeProject(_ root: URL) throws -> [SessionPreview] {
+        try RecentSessionScanner.scan(
+            claudeHome: root.appendingPathComponent("claude"),
+            codexHome: root.appendingPathComponent("codex"),
+            opencodeHome: root.appendingPathComponent("opencode"),
+            lookbackDays: nil,
+            maximumPerProvider: 10
+        )
+    }
+
     @Test("duplicate Claude transcript copies produce one picker identity")
     func duplicateClaudeTranscriptCopies() throws {
         let root = FileManager.default.temporaryDirectory

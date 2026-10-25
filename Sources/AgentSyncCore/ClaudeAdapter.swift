@@ -31,25 +31,17 @@ public struct ClaudeAdapter: Sendable {
             return nil
         }
 
-        let fallbackSessionID = url.deletingPathExtension().lastPathComponent
-        var sessionID = fallbackSessionID
+        let sessionID = claudeSessionID(url: url, objects: objects)
         var cwd = ""
-        var title: String?
         var model: String?
         var firstTimestamp: Date?
         var lastTimestamp: Date?
         var events: [CanonicalEvent] = []
 
         for (index, object) in objects.enumerated() {
-            if let value = object.string("sessionId") {
-                sessionID = value
-            }
-            if cwd.isEmpty, let value = object.string("cwd") {
+            if let value = object.string("cwd"),
+               cwd.isEmpty || object.string("sessionId") == sessionID {
                 cwd = value
-            }
-            // ai-title lines recur as Claude re-titles the session; latest wins.
-            if let aiTitle = object.string("aiTitle") {
-                title = aiTitle
             }
 
             let timestamp = DateCoding.parse(object.string("timestamp")) ?? firstTimestamp ?? Date(timeIntervalSince1970: 0)
@@ -90,7 +82,7 @@ public struct ClaudeAdapter: Sendable {
 
         let createdAt = firstTimestamp ?? events.first?.timestamp ?? Date()
         let updatedAt = lastTimestamp ?? events.last?.timestamp ?? createdAt
-        let resolvedTitle = cleanTitle(title)
+        let resolvedTitle = claudeSessionTitle(objects: objects, sessionID: sessionID)
             ?? cleanTitle(events.first(where: { $0.role == .user && !looksLikeInjectedContext($0.text) })?.text)
             ?? "Claude session \(sessionID)"
 
@@ -253,6 +245,32 @@ public struct ClaudeAdapter: Sendable {
             return []
         }
     }
+}
+
+/// Forks can begin with copied records that still carry the parent's ID.
+/// Native UUID filenames identify the session being read, regardless of history.
+func claudeSessionID(url: URL, objects: [[String: JSONValue]]) -> String {
+    let filename = url.deletingPathExtension().lastPathComponent
+    if UUID(uuidString: filename) != nil {
+        return filename
+    }
+    return objects.reversed().compactMap { $0.string("sessionId") }.first ?? filename
+}
+
+/// Explicit names win over automatic names. Prefer this session's metadata;
+/// copied parent metadata is a fallback for forks that have not been named yet.
+func claudeSessionTitle(objects: [[String: JSONValue]], sessionID: String) -> String? {
+    func title(in records: [[String: JSONValue]]) -> String? {
+        for key in ["customTitle", "aiTitle"] {
+            if let value = records.reversed().compactMap({ cleanTitle($0.string(key)) }).first {
+                return value
+            }
+        }
+        return nil
+    }
+    return title(in: objects.filter { $0.string("sessionId") == sessionID })
+        ?? title(in: objects.filter { $0.string("sessionId") == nil })
+        ?? title(in: objects)
 }
 
 private func renderClaudeQuestions(_ input: [String: JSONValue]) -> String? {
