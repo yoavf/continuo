@@ -1,5 +1,6 @@
 import AgentSyncCore
 import AppKit
+import ServiceManagement
 import SwiftUI
 
 struct SettingsView: View {
@@ -46,9 +47,29 @@ private struct GeneralSettingsTab: View {
     @State private var supersetStatus = TerminalLauncher.supersetConnectionStatus
     @State private var setupInstructionsTerminal: TerminalApp?
     @State private var advancedExpanded = false
+    @State private var loginItemStatus = SMAppService.mainApp.status
+    @State private var loginItemError: String?
 
     var body: some View {
         Form {
+            Section {
+                Toggle("Launch Continuo at login", isOn: launchAtLoginBinding)
+            } footer: {
+                if let loginItemError {
+                    Text(loginItemError)
+                } else if loginItemStatus == .requiresApproval {
+                    HStack(spacing: 4) {
+                        Text("Allow Continuo under Login Items to finish turning this on.")
+                        Button("Open Login Items…") {
+                            SMAppService.openSystemSettingsLoginItems()
+                        }
+                        .buttonStyle(.link)
+                    }
+                } else {
+                    Text("Keeps Continuo in the menu bar after you restart your Mac.")
+                }
+            }
+
             Section {
                 Toggle("Open the picker with ⌥⌘S", isOn: $hotkeyEnabled)
                     .onChange(of: hotkeyEnabled) {
@@ -165,9 +186,36 @@ private struct GeneralSettingsTab: View {
         .onAppear {
             cmuxStatus = TerminalLauncher.cmuxConnectionStatus
             supersetStatus = TerminalLauncher.supersetConnectionStatus
+            loginItemStatus = SMAppService.mainApp.status
+        }
+        // The settings window is reused, so `onAppear` doesn't rerun when it
+        // reopens; pick up approvals made in System Settings meanwhile.
+        .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
+            loginItemStatus = SMAppService.mainApp.status
         }
         .alert(item: $setupInstructionsTerminal) { terminal in
             setupAlert(for: terminal)
+        }
+    }
+
+    /// The system owns login-item state — users can also change it in System
+    /// Settings — so it is read back from `SMAppService` after every change
+    /// rather than mirrored into UserDefaults.
+    private var launchAtLoginBinding: Binding<Bool> {
+        Binding {
+            loginItemStatus == .enabled || loginItemStatus == .requiresApproval
+        } set: { enabled in
+            loginItemError = nil
+            do {
+                if enabled {
+                    try SMAppService.mainApp.register()
+                } else {
+                    try SMAppService.mainApp.unregister()
+                }
+            } catch {
+                loginItemError = "Couldn’t update the login item: \(error.localizedDescription)"
+            }
+            loginItemStatus = SMAppService.mainApp.status
         }
     }
 

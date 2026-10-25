@@ -7,6 +7,9 @@ struct SessionPickerView: View {
     var ownerID = UUID()
     @State private var query = ""
     @State private var selectedItem: SessionItem?
+    /// Row the arrow keys and pointer last landed on; Return opens it.
+    @State private var highlightedID: SessionItem.ID?
+    @FocusState private var isSearchFocused: Bool
 
     /// Six most recent conversations by default; searching reaches the whole
     /// scanned set. Every query word must match something — title, project, or
@@ -28,6 +31,31 @@ struct SessionPickerView: View {
                 haystack.contains { $0.localizedCaseInsensitiveContains(token) }
             }
         }
+    }
+
+    /// Like Spotlight, the top result stays highlighted until the user moves,
+    /// so typing a query and pressing Return opens the best match.
+    private var highlightedItem: SessionItem? {
+        let sessions = filteredSessions
+        return sessions.first { $0.id == highlightedID } ?? sessions.first
+    }
+
+    private func moveHighlight(by offset: Int) {
+        let sessions = filteredSessions
+        guard !sessions.isEmpty else {
+            return
+        }
+        let current = highlightedItem.flatMap { item in
+            sessions.firstIndex { $0.id == item.id }
+        } ?? 0
+        highlightedID = sessions[min(max(current + offset, 0), sessions.count - 1)].id
+    }
+
+    private func openHighlighted() {
+        guard model.launchingID == nil, let item = highlightedItem else {
+            return
+        }
+        selectedItem = item
     }
 
     var body: some View {
@@ -79,6 +107,24 @@ struct SessionPickerView: View {
                     .foregroundStyle(.secondary)
                 TextField("Search sessions", text: $query)
                     .textFieldStyle(.plain)
+                    .focused($isSearchFocused)
+                    .onSubmit(openHighlighted)
+                    .onKeyPress(.upArrow) {
+                        moveHighlight(by: -1)
+                        return .handled
+                    }
+                    .onKeyPress(.downArrow) {
+                        moveHighlight(by: 1)
+                        return .handled
+                    }
+                    .onChange(of: query) {
+                        highlightedID = nil
+                    }
+                    // Also runs when returning from the continue view, which
+                    // rebuilds the header.
+                    .onAppear {
+                        isSearchFocused = true
+                    }
             }
             .padding(.horizontal, 8)
             .padding(.vertical, 5)
@@ -137,19 +183,31 @@ struct SessionPickerView: View {
             .padding(.top, 8)
             .padding(.bottom, 2)
 
-            ScrollView {
-                LazyVStack(spacing: 1) {
-                    ForEach(filteredSessions) { item in
-                        SessionRow(
-                            item: item,
-                            isLaunching: model.launchingID == item.id,
-                            isDisabled: model.launchingID != nil
-                        ) {
-                            selectedItem = item
+            ScrollViewReader { proxy in
+                ScrollView {
+                    LazyVStack(spacing: 1) {
+                        ForEach(filteredSessions) { item in
+                            SessionRow(
+                                item: item,
+                                isHighlighted: highlightedItem?.id == item.id,
+                                isLaunching: model.launchingID == item.id,
+                                isDisabled: model.launchingID != nil,
+                                onHover: { highlightedID = item.id }
+                            ) {
+                                selectedItem = item
+                            }
+                            .id(item.id)
                         }
                     }
+                    .padding(6)
                 }
-                .padding(6)
+                // Track the effective row, not `highlightedID`: a query edit
+                // resets that to nil, which falls back to the top result.
+                .onChange(of: highlightedItem?.id) { _, id in
+                    if let id {
+                        proxy.scrollTo(id)
+                    }
+                }
             }
             // A ScrollView has no intrinsic height, and the MenuBarExtra window
             // sizes to ideal height — without an explicit frame it collapses to
@@ -194,11 +252,11 @@ struct SessionPickerView: View {
 
 private struct SessionRow: View {
     var item: SessionItem
+    var isHighlighted: Bool
     var isLaunching: Bool
     var isDisabled: Bool
+    var onHover: () -> Void
     var onSelect: () -> Void
-
-    @State private var isHovering = false
 
     var body: some View {
         Button(action: onSelect) {
@@ -240,7 +298,7 @@ private struct SessionRow: View {
                     Image(systemName: "chevron.right")
                         .font(.system(size: 11, weight: .semibold))
                         .foregroundStyle(.tertiary)
-                        .opacity(isHovering ? 1 : 0.35)
+                        .opacity(isHighlighted ? 1 : 0.35)
                 }
             }
             .padding(.horizontal, 8)
@@ -251,10 +309,14 @@ private struct SessionRow: View {
         .disabled(isDisabled)
         .background(
             RoundedRectangle(cornerRadius: 7)
-                .fill(isHovering && !isDisabled ? AnyShapeStyle(.quaternary.opacity(0.7)) : AnyShapeStyle(.clear))
+                .fill(isHighlighted && !isDisabled ? AnyShapeStyle(.quaternary.opacity(0.7)) : AnyShapeStyle(.clear))
         )
+        // Pointer and arrow keys share one highlight, as in Spotlight; leaving
+        // a row keeps it highlighted so Return still has a target.
         .onHover { hovering in
-            isHovering = hovering
+            if hovering {
+                onHover()
+            }
         }
         .help("Choose where to continue this conversation")
     }
