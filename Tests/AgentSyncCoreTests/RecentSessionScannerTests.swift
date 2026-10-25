@@ -4,6 +4,31 @@ import Testing
 
 @Suite("Recent session scanner titles")
 struct RecentSessionScannerTests {
+    @Test("Claude custom titles in skipped middle records override edge automatic titles")
+    func claudeTitleInMiddle() throws {
+        try withClaudeProject { root, project in
+            let id = "11111111-1111-4111-8111-111111111111"
+            let url = project.appendingPathComponent("\(id).jsonl")
+            let filler = #"{"type":"assistant","message":{"content":"\#(String(repeating: "x", count: 2000))"}}"# + "\n"
+            let transcript = """
+            {"type":"user","sessionId":"\(id)","message":{"content":"Original request"}}
+            {"type":"ai-title","sessionId":"\(id)","aiTitle":"Automatic title"}
+
+            """ + String(repeating: filler, count: 180) + """
+            {"type":"custom-title","sessionId":"\(id)","customTitle":"Old explicit title"}
+            {"type":"assistant","message":{"content":"\(String(repeating: "x", count: 300_000))"}}
+            {"type":"custom-title","sessionId":"\(id)","customTitle":"Latest explicit title"}
+
+            """ + String(repeating: filler, count: 180)
+            try Data(transcript.utf8).write(to: url)
+            let preview = try #require(try scanClaudeProject(root).first)
+            let imported = try #require(try ClaudeAdapter().importSession(from: url))
+            #expect(preview.title == "Latest explicit title")
+            #expect(preview.hasSourceTitle)
+            #expect(preview.title == imported.title)
+        }
+    }
+
     @Test("Claude forks keep their own identity and custom title despite copied parent history")
     func claudeForkMetadata() throws {
         try withClaudeProject { root, project in

@@ -357,7 +357,8 @@ public enum RecentSessionScanner {
                 cwd = value
             }
         }
-        let sourceTitle = claudeSessionTitle(objects: edgeObjects, sessionID: sessionID)
+        let sourceTitle = (try? readClaudeTitle(from: url, sessionID: sessionID))
+            ?? claudeSessionTitle(objects: edgeObjects, sessionID: sessionID)
 
         return SessionPreview(
             provider: .claude,
@@ -371,6 +372,62 @@ public enum RecentSessionScanner {
             cwd: cwd,
             updatedAt: modifiedAt
         )
+    }
+
+    /// Names may be buried between the preview edges. Stream the file without
+    /// decoding message bodies or retaining the transcript. Title records are
+    /// small; oversized lines are discarded until the next newline.
+    private static func readClaudeTitle(from url: URL, sessionID: String) throws -> String? {
+        let handle = try FileHandle(forReadingFrom: url)
+        defer { try? handle.close() }
+        let chunkSize = 64 * 1024
+        let titleKeys = ["customTitle", "aiTitle"]
+        let markers = titleKeys.map { Data("\"\($0)\"".utf8) }
+        var line = Data()
+        var oversized = false
+        // At most six records: latest custom/automatic title in each scope
+        // (this session, unscoped, or copied parent history).
+        var latest: [String: (Int, [String: JSONValue])] = [:]
+        var recordIndex = 0
+
+        func consumeLine() {
+            defer { line.removeAll(keepingCapacity: true); oversized = false }
+            guard !oversized, markers.contains(where: { line.range(of: $0) != nil }),
+                  let raw = try? JSONSerialization.jsonObject(with: line),
+                  let value = try? JSONValue.foundation(raw),
+                  let object = value.objectValue else { return }
+            let id = object.string("sessionId")
+            let scope = id == sessionID ? "own" : (id == nil ? "unscoped" : "parent")
+            for key in titleKeys where cleanTitle(object.string(key)) != nil {
+                latest["\(scope):\(key)"] = (recordIndex, object)
+            }
+            recordIndex += 1
+        }
+
+        while let chunk = try handle.read(upToCount: chunkSize), !chunk.isEmpty {
+            var start = chunk.startIndex
+            while start < chunk.endIndex {
+                let newline = chunk[start...].firstIndex(of: 0x0a)
+                let end = newline ?? chunk.endIndex
+                if !oversized {
+                    if line.count + (end - start) <= chunkSize {
+                        line.append(contentsOf: chunk[start..<end])
+                    } else {
+                        line.removeAll(keepingCapacity: true)
+                        oversized = true
+                    }
+                }
+                if let newline {
+                    consumeLine()
+                    start = newline + 1
+                } else {
+                    break
+                }
+            }
+        }
+        if !line.isEmpty { consumeLine() }
+        let records = latest.values.sorted { $0.0 < $1.0 }.map { $0.1 }
+        return claudeSessionTitle(objects: records, sessionID: sessionID)
     }
 
     private static func claudePromptPreview(from value: JSONValue?) -> String? {
