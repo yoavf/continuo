@@ -27,10 +27,13 @@ enum NativeFileWriter {
         }
         try text.write(to: tmp, atomically: true, encoding: .utf8)
 
-        if fm.fileExists(atPath: destination.path) {
-            try fm.removeItem(at: destination)
+        // rename(2) swaps the file in one step, so a concurrent reader (a
+        // resuming CLI) never sees the mirror missing mid-replace.
+        guard rename(tmp.path, destination.path) == 0 else {
+            let code = errno
+            try? fm.removeItem(at: tmp)
+            throw AgentSyncError.unsafeWrite("Could not move mirror into place at \(destination.path): \(String(cString: strerror(code)))")
         }
-        try fm.moveItem(at: tmp, to: destination)
     }
 
     /// Canonicalizes a path whether or not it exists yet, by resolving the

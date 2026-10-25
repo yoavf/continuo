@@ -6,14 +6,16 @@ import SwiftUI
 struct ContinueView: View {
     @ObservedObject var model: AppModel
     var item: SessionItem
+    var ownerID: UUID
     var onDismiss: () -> Void
 
     @State private var target: AgentKind
     @State private var mode: ResumeMode
 
-    init(model: AppModel, item: SessionItem, onDismiss: @escaping () -> Void) {
+    init(model: AppModel, item: SessionItem, ownerID: UUID = UUID(), onDismiss: @escaping () -> Void) {
         self.model = model
         self.item = item
+        self.ownerID = ownerID
         self.onDismiss = onDismiss
         let initialTarget = item.primaryTarget
         _target = State(initialValue: initialTarget)
@@ -104,7 +106,7 @@ struct ContinueView: View {
                 Spacer()
 
                 Button {
-                    model.prepareResume(item, target: target, mode: mode)
+                    model.prepareResume(item, target: target, mode: mode, owner: ownerID)
                 } label: {
                     HStack(spacing: 5) {
                         if model.launchingID == item.id {

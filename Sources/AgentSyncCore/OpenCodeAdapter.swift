@@ -154,8 +154,10 @@ public struct OpenCodeAdapter: Sendable {
                         text: "OpenCode tool call: \(toolName)\n\(input)",
                         metadata: metadata
                     ))
+                    // A failed call carries its message in `error`, not `output`.
+                    let rawOutput = state.string("output") ?? state["output"]?.prettyString() ?? ""
                     let output = boundedTranscriptText(
-                        state.string("output") ?? state["output"]?.prettyString() ?? "",
+                        rawOutput.isEmpty ? (state.string("error") ?? "") : rawOutput,
                         limit: 20_000
                     )
                     if !output.isEmpty {

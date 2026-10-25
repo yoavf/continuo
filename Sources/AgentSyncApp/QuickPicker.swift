@@ -67,7 +67,8 @@ enum QuickPicker {
             panel = nil
             return
         }
-        let hosting = NSHostingController(rootView: SessionPickerView(model: model))
+        let ownerID = UUID()
+        let hosting = NSHostingController(rootView: SessionPickerView(model: model, ownerID: ownerID))
         let newPanel = KeyablePanel(
             contentRect: NSRect(x: 0, y: 0, width: 480, height: 200),
             styleMask: [.nonactivatingPanel, .titled, .fullSizeContentView],
@@ -86,6 +87,9 @@ enum QuickPicker {
         newPanel.isReleasedWhenClosed = false
         newPanel.onDismiss = {
             panel = nil
+            // This panel's picker is gone for good; its review page must not
+            // reappear in the next one.
+            model.abandonConversion(ownedBy: ownerID)
         }
 
         // Spotlight placement: horizontally centered, upper third.

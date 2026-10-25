@@ -39,11 +39,20 @@ enum Prefs {
     }
 
     static var codexTargetModel: String {
-        UserDefaults.standard.string(forKey: codexTargetModelKey) ?? production.defaultCodexModel
+        nonBlank(UserDefaults.standard.string(forKey: codexTargetModelKey)) ?? production.defaultCodexModel
     }
 
     static var claudeTargetModel: String {
-        UserDefaults.standard.string(forKey: claudeTargetModelKey) ?? production.defaultClaudeModel
+        nonBlank(UserDefaults.standard.string(forKey: claudeTargetModelKey)) ?? production.defaultClaudeModel
+    }
+
+    /// A cleared Settings field stores "", which must fall back to the default
+    /// rather than become the target model.
+    private static func nonBlank(_ value: String?) -> String? {
+        guard let trimmed = value?.trimmingCharacters(in: .whitespacesAndNewlines), !trimmed.isEmpty else {
+            return nil
+        }
+        return trimmed
     }
 
     static var preferredTerminal: TerminalApp {
@@ -331,6 +340,18 @@ final class AppModel: ObservableObject {
     private var activationObserver: NSObjectProtocol?
     private var titleCache: [String: String] = [:]
     private var titleGenerationInFlight: Set<String> = []
+    /// Sessions the on-device model declined to title this launch (too short,
+    /// guardrails, timeout). Skipped so they don't block the ones behind them.
+    private var titleGenerationFailed: Set<String> = []
+    /// A refresh requested while a scan or conversion is running (e.g. after a
+    /// Settings path change) runs once that work lands.
+    private var refreshQueued = false
+    /// Bumped whenever the continue flow is abandoned, so a conversion that
+    /// finishes afterwards doesn't resurrect a stale review page.
+    private var conversionGeneration = 0
+    /// The picker whose continue flow started the current conversion. Each
+    /// hotkey panel is a fresh picker, so only its own close abandons work.
+    private var conversionOwner: UUID?
     private let isDemo: Bool
 
     /// Demo instance for README screenshots: no scanning, timers, or hotkey, so
@@ -402,9 +423,11 @@ final class AppModel: ObservableObject {
         guard !isDemo else {
             return
         }
-        guard !isRefreshing, launchingID == nil else {
+        guard launchingID == nil, !isRefreshing else {
+            refreshQueued = true
             return
         }
+        refreshQueued = false
         isRefreshing = true
         let configuration = Prefs.configuration()
 
@@ -433,9 +456,12 @@ final class AppModel: ObservableObject {
                     self.pruneTitleCache(keeping: decorated)
                     self.generateMissingTitles()
                 case .failure(let error):
-                    self.status = .error(String(describing: error))
+                    if self.launchingID == nil {
+                        self.setStatus(.error(String(describing: error)))
+                    }
                 }
                 self.isRefreshing = false
+                self.runQueuedRefresh()
             }
         }
     }
@@ -447,7 +473,11 @@ final class AppModel: ObservableObject {
             return
         }
         let candidates = sessions
-            .filter { $0.wantsRefinedTitle && !titleGenerationInFlight.contains($0.id) }
+            .filter {
+                $0.wantsRefinedTitle
+                    && !titleGenerationInFlight.contains($0.id)
+                    && !titleGenerationFailed.contains($0.id)
+            }
             .prefix(3)
         for item in candidates {
             titleGenerationInFlight.insert(item.id)
@@ -457,6 +487,8 @@ final class AppModel: ObservableObject {
                 await MainActor.run {
                     self.titleGenerationInFlight.remove(item.id)
                     guard let title else {
+                        self.titleGenerationFailed.insert(item.id)
+                        self.generateMissingTitles()
                         return
                     }
                     guard let index = self.sessions.firstIndex(where: { $0.id == item.id }),
@@ -502,15 +534,18 @@ final class AppModel: ObservableObject {
         }
     }
 
-    func prepareResume(_ item: SessionItem, target: AgentKind, mode: ResumeMode) {
+    func prepareResume(_ item: SessionItem, target: AgentKind, mode: ResumeMode, owner: UUID) {
         guard launchingID == nil, target != item.preview.provider else {
             return
         }
+        conversionOwner = owner
         let terminal = Prefs.preferredTerminal
         let codexDestination = Prefs.codexLaunchDestination
         let claudeDestination = Prefs.claudeLaunchDestination
         let opencodeDestination = Prefs.opencodeLaunchDestination
         launchingID = item.id
+        conversionGeneration += 1
+        let generation = conversionGeneration
         setStatus(.working("Converting for \(target.displayName)…"))
         Prefs.setPrimaryTarget(target, for: item.preview.provider)
         let configuration = Prefs.configuration()
@@ -557,7 +592,9 @@ final class AppModel: ObservableObject {
             await MainActor.run {
                 switch result {
                 case .success(let prepared):
-                    self.preparedConversion = prepared
+                    if generation == self.conversionGeneration {
+                        self.preparedConversion = prepared
+                    }
                     self.setStatus(.idle)
                 case .failure(let error):
                     self.setStatus(.error(shortErrorText(error)))
@@ -567,6 +604,7 @@ final class AppModel: ObservableObject {
                     }
                 }
                 self.launchingID = nil
+                self.runQueuedRefresh()
             }
         }
     }
@@ -611,7 +649,24 @@ final class AppModel: ObservableObject {
     }
 
     func clearPreparedConversion() {
+        conversionGeneration += 1
         preparedConversion = nil
+    }
+
+    /// Drops the prepared (or in-flight) conversion only if `owner`'s picker
+    /// started it, so closing one picker never discards another's work.
+    func abandonConversion(ownedBy owner: UUID) {
+        guard conversionOwner == owner else {
+            return
+        }
+        conversionOwner = nil
+        clearPreparedConversion()
+    }
+
+    private func runQueuedRefresh() {
+        if refreshQueued {
+            refresh()
+        }
     }
 
     func clearStatus() {

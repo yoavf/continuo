@@ -206,6 +206,75 @@ struct RecentSessionScannerTests {
         #expect(Set(previews.map(\.id)).count == previews.count)
     }
 
+    @Test("edge reads survive a byte cut inside a multibyte character")
+    func edgeReadsSurviveMultibyteCut() throws {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent("continuo-multibyte-edge-\(UUID().uuidString)", isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+
+        let claudeHome = root.appendingPathComponent("claude", isDirectory: true)
+        let project = claudeHome
+            .appendingPathComponent("projects", isDirectory: true)
+            .appendingPathComponent("-tmp-project", isDirectory: true)
+        try FileManager.default.createDirectory(at: project, withIntermediateDirectories: true)
+
+        // "é" is two UTF-8 bytes. Pad the lines around a long run of them so
+        // both the 256 KB prefix cut and the 256 KB tail cut land mid-character.
+        let edgeBytes = 256 * 1024
+        let sessionID = "33333333-3333-4333-8333-333333333333"
+        var header = #"{"sessionId":"\#(sessionID)","cwd":"/tmp/project","type":"user","message":{"role":"user","content":"Multibyte prompt"}}"# + "\n"
+        header += #"{"type":"progress","text":""#
+        if (edgeBytes - header.utf8.count).isMultiple(of: 2) {
+            header = header.replacingOccurrences(of: #"{"type":"progress""#, with: #"{ "type":"progress""#)
+        }
+        var titleLine = #"{"type":"ai-title","aiTitle":"Title from the tail"}"# + "\n"
+        if (3 + titleLine.utf8.count).isMultiple(of: 2) {
+            titleLine = " " + titleLine
+        }
+        let transcript = header + String(repeating: "é", count: 300_000) + "\"}\n" + titleLine
+        try Data(transcript.utf8).write(to: project.appendingPathComponent("\(sessionID).jsonl"))
+
+        let previews = try RecentSessionScanner.scan(
+            claudeHome: claudeHome,
+            codexHome: root.appendingPathComponent("codex", isDirectory: true),
+            opencodeHome: root.appendingPathComponent("opencode", isDirectory: true),
+            lookbackDays: nil,
+            maximumPerProvider: 10
+        )
+        let preview = try #require(previews.first)
+
+        #expect(preview.snippet == "Multibyte prompt")
+        #expect(preview.title == "Title from the tail")
+        #expect(preview.cwd == "/tmp/project")
+    }
+
+    @Test("a small transcript keeps its first record in the tail read")
+    func smallTranscriptTailKeepsFirstRecord() throws {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent("continuo-small-tail-\(UUID().uuidString)", isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+
+        let claudeHome = root.appendingPathComponent("claude", isDirectory: true)
+        let project = claudeHome
+            .appendingPathComponent("projects", isDirectory: true)
+            .appendingPathComponent("-tmp-project", isDirectory: true)
+        try FileManager.default.createDirectory(at: project, withIntermediateDirectories: true)
+
+        let sessionID = "44444444-4444-4444-8444-444444444444"
+        let transcript = #"{"type":"assistant","sessionId":"\#(sessionID)","cwd":"/tmp/project","message":{"role":"assistant","content":"hi","usage":{"input_tokens":1234}}}"# + "\n"
+        try Data(transcript.utf8).write(to: project.appendingPathComponent("\(sessionID).jsonl"))
+
+        let previews = try RecentSessionScanner.scan(
+            claudeHome: claudeHome,
+            codexHome: root.appendingPathComponent("codex", isDirectory: true),
+            opencodeHome: root.appendingPathComponent("opencode", isDirectory: true),
+            lookbackDays: nil,
+            maximumPerProvider: 10
+        )
+
+        #expect(try #require(previews.first).estimatedTokens == 1234)
+    }
+
     @Test("provider title metadata is distinguished from a prompt fallback")
     func sourceTitleProvenance() throws {
         let root = FileManager.default.temporaryDirectory

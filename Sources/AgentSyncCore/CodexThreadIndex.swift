@@ -102,19 +102,23 @@ struct CodexThreadIndex {
     private func runSQLiteCapturing(_ sql: String) throws -> String {
         let process = Process()
         process.executableURL = URL(fileURLWithPath: "/usr/bin/sqlite3")
-        process.arguments = [databaseURL.path, sql]
+        // Codex keeps this database open; wait out its write locks instead of
+        // failing immediately with "database is locked".
+        process.arguments = ["-cmd", ".timeout 3000", databaseURL.path, sql]
         let stdout = Pipe()
         let stderr = Pipe()
         process.standardOutput = stdout
         process.standardError = stderr
         try process.run()
+        // Drain stdout before waiting so a large result can't fill the pipe
+        // and deadlock the child.
+        let data = stdout.fileHandleForReading.readDataToEndOfFile()
         process.waitUntilExit()
         if process.terminationStatus != 0 {
-            let data = stderr.fileHandleForReading.readDataToEndOfFile()
-            let message = String(data: data, encoding: .utf8) ?? "sqlite3 failed"
+            let errorData = stderr.fileHandleForReading.readDataToEndOfFile()
+            let message = String(data: errorData, encoding: .utf8) ?? "sqlite3 failed"
             throw AgentSyncError.commandFailed(message)
         }
-        let data = stdout.fileHandleForReading.readDataToEndOfFile()
         return String(data: data, encoding: .utf8) ?? ""
     }
 }
