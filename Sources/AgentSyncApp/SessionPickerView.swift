@@ -3,6 +3,8 @@ import SwiftUI
 
 struct SessionPickerView: View {
     @ObservedObject var model: AppModel
+    /// Identifies this picker's continue flow to the shared model.
+    var ownerID = UUID()
     @State private var query = ""
     @State private var selectedItem: SessionItem?
 
@@ -31,11 +33,11 @@ struct SessionPickerView: View {
     var body: some View {
         VStack(spacing: 0) {
             if let item = selectedItem {
-                ContinueView(model: model, item: item) {
+                ContinueView(model: model, item: item, ownerID: ownerID) {
                     // Leaving the continue flow abandons any prepared
                     // conversion; otherwise reopening the same session would
                     // restore (and offer to launch) stale choices.
-                    model.clearPreparedConversion()
+                    model.abandonConversion(ownedBy: ownerID)
                     selectedItem = nil
                 }
             } else {
@@ -56,11 +58,6 @@ struct SessionPickerView: View {
         }
         .frame(width: 480)
         .onAppear {
-            // The hotkey panel builds a fresh picker each time, so a review
-            // page abandoned by closing the panel must not come back.
-            if selectedItem == nil {
-                model.clearPreparedConversion()
-            }
             model.refresh()
         }
         .alert(item: $model.terminalSetupAlert) { setupAlert in

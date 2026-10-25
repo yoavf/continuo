@@ -343,12 +343,15 @@ final class AppModel: ObservableObject {
     /// Sessions the on-device model declined to title this launch (too short,
     /// guardrails, timeout). Skipped so they don't block the ones behind them.
     private var titleGenerationFailed: Set<String> = []
-    /// A refresh requested while one is running (e.g. after a Settings path
-    /// change) re-runs once the current scan lands.
+    /// A refresh requested while a scan or conversion is running (e.g. after a
+    /// Settings path change) runs once that work lands.
     private var refreshQueued = false
     /// Bumped whenever the continue flow is abandoned, so a conversion that
     /// finishes afterwards doesn't resurrect a stale review page.
     private var conversionGeneration = 0
+    /// The picker whose continue flow started the current conversion. Each
+    /// hotkey panel is a fresh picker, so only its own close abandons work.
+    private var conversionOwner: UUID?
     private let isDemo: Bool
 
     /// Demo instance for README screenshots: no scanning, timers, or hotkey, so
@@ -420,13 +423,11 @@ final class AppModel: ObservableObject {
         guard !isDemo else {
             return
         }
-        guard launchingID == nil else {
-            return
-        }
-        guard !isRefreshing else {
+        guard launchingID == nil, !isRefreshing else {
             refreshQueued = true
             return
         }
+        refreshQueued = false
         isRefreshing = true
         let configuration = Prefs.configuration()
 
@@ -460,10 +461,7 @@ final class AppModel: ObservableObject {
                     }
                 }
                 self.isRefreshing = false
-                if self.refreshQueued {
-                    self.refreshQueued = false
-                    self.refresh()
-                }
+                self.runQueuedRefresh()
             }
         }
     }
@@ -536,10 +534,11 @@ final class AppModel: ObservableObject {
         }
     }
 
-    func prepareResume(_ item: SessionItem, target: AgentKind, mode: ResumeMode) {
+    func prepareResume(_ item: SessionItem, target: AgentKind, mode: ResumeMode, owner: UUID) {
         guard launchingID == nil, target != item.preview.provider else {
             return
         }
+        conversionOwner = owner
         let terminal = Prefs.preferredTerminal
         let codexDestination = Prefs.codexLaunchDestination
         let claudeDestination = Prefs.claudeLaunchDestination
@@ -605,6 +604,7 @@ final class AppModel: ObservableObject {
                     }
                 }
                 self.launchingID = nil
+                self.runQueuedRefresh()
             }
         }
     }
@@ -651,6 +651,22 @@ final class AppModel: ObservableObject {
     func clearPreparedConversion() {
         conversionGeneration += 1
         preparedConversion = nil
+    }
+
+    /// Drops the prepared (or in-flight) conversion only if `owner`'s picker
+    /// started it, so closing one picker never discards another's work.
+    func abandonConversion(ownedBy owner: UUID) {
+        guard conversionOwner == owner else {
+            return
+        }
+        conversionOwner = nil
+        clearPreparedConversion()
+    }
+
+    private func runQueuedRefresh() {
+        if refreshQueued {
+            refresh()
+        }
     }
 
     func clearStatus() {

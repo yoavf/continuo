@@ -170,8 +170,11 @@ struct AgentSyncCLI {
     /// Nil when the flag is absent; throws when it is present but unparsable,
     /// so a typo like `--mode ful` fails instead of silently using the default.
     private static func parsed<T>(after flag: String, in args: [String], as parse: (String) -> T?) throws -> T? {
-        guard let raw = value(after: flag, in: args) else {
+        guard args.contains(flag) else {
             return nil
+        }
+        guard let raw = value(after: flag, in: args) else {
+            throw AgentSyncError.invalidArguments("missing value for \(flag)")
         }
         guard let parsedValue = parse(raw) else {
             throw AgentSyncError.invalidArguments("invalid value for \(flag): \(raw)")
