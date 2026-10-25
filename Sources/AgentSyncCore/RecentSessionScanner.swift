@@ -114,6 +114,8 @@ public struct SessionPreview: Identifiable, Equatable, Sendable {
 }
 
 public enum RecentSessionScanner {
+    private static let claudeTitleCache = ClaudeTitleCache()
+
     /// Newest-first previews across all providers.
     public static func scan(
         claudeHome: URL,
@@ -331,15 +333,13 @@ public enum RecentSessionScanner {
         prefixObjects: [[String: JSONValue]],
         tailObjects: [[String: JSONValue]]
     ) -> SessionPreview {
-        let fallbackID = url.deletingPathExtension().lastPathComponent
-        var sessionID = fallbackID
+        let edgeObjects = prefixObjects + tailObjects
+        let sessionID = claudeSessionID(url: url, objects: edgeObjects)
         var cwd = PathEncoding.decodeClaudeProjectName(url.deletingLastPathComponent().lastPathComponent)
-        var title: String?
         var snippet: String?
         var models: [String] = []
 
         for object in prefixObjects {
-            sessionID = object.string("sessionId") ?? sessionID
             cwd = object.string("cwd") ?? cwd
             if let message = object.object("message") {
                 if let model = message.string("model"), !models.contains(model) {
@@ -347,20 +347,22 @@ public enum RecentSessionScanner {
                 }
                 if snippet == nil,
                    object.string("type") == "user",
-                   let text = previewText(from: message["content"]),
+                   let text = claudePromptPreview(from: message["content"]),
                    !looksLikeInjectedContext(text) {
                     snippet = text
                 }
             }
         }
-        // ai-title lines recur through the file as Claude re-titles; the last
-        // one in the tail is current.
-        for object in (prefixObjects + tailObjects) {
-            if let aiTitle = object.string("aiTitle") {
-                title = aiTitle
+        // Fork prefixes may still describe the parent's working directory.
+        for object in edgeObjects where object.string("sessionId") == sessionID {
+            if let value = object.string("cwd") {
+                cwd = value
             }
         }
-        let sourceTitle = cleanTitle(title)
+        let sourceTitle = (try? claudeTitleCache.title(for: url, sessionID: sessionID) {
+            try readClaudeTitle(from: url, sessionID: sessionID)
+        })
+            ?? claudeSessionTitle(objects: edgeObjects, sessionID: sessionID)
 
         return SessionPreview(
             provider: .claude,
@@ -374,6 +376,83 @@ public enum RecentSessionScanner {
             cwd: cwd,
             updatedAt: modifiedAt
         )
+    }
+
+    /// Names may be buried between the preview edges. Stream the file without
+    /// decoding message bodies or retaining the transcript. Title records are
+    /// small; oversized lines are discarded until the next newline.
+    private static func readClaudeTitle(from url: URL, sessionID: String) throws -> String? {
+        let handle = try FileHandle(forReadingFrom: url)
+        defer { try? handle.close() }
+        let chunkSize = 64 * 1024
+        let titleKeys = ["customTitle", "aiTitle"]
+        let markers = titleKeys.map { Data("\"\($0)\"".utf8) }
+        var line = Data()
+        var oversized = false
+        // At most six records: latest custom/automatic title in each scope
+        // (this session, unscoped, or copied parent history).
+        var latest: [String: (Int, [String: JSONValue])] = [:]
+        var recordIndex = 0
+
+        func consumeLine() {
+            defer { line.removeAll(keepingCapacity: true); oversized = false }
+            guard !oversized, markers.contains(where: { line.range(of: $0) != nil }),
+                  let raw = try? JSONSerialization.jsonObject(with: line),
+                  let value = try? JSONValue.foundation(raw),
+                  let object = value.objectValue else { return }
+            let id = object.string("sessionId")
+            let scope = id == sessionID ? "own" : (id == nil ? "unscoped" : "parent")
+            for key in titleKeys where cleanTitle(object.string(key)) != nil {
+                latest["\(scope):\(key)"] = (recordIndex, object)
+            }
+            recordIndex += 1
+        }
+
+        while let chunk = try handle.read(upToCount: chunkSize), !chunk.isEmpty {
+            var start = chunk.startIndex
+            while start < chunk.endIndex {
+                let newline = chunk[start...].firstIndex(of: 0x0a)
+                let end = newline ?? chunk.endIndex
+                if !oversized {
+                    if line.count + (end - start) <= chunkSize {
+                        line.append(contentsOf: chunk[start..<end])
+                    } else {
+                        line.removeAll(keepingCapacity: true)
+                        oversized = true
+                    }
+                }
+                if let newline {
+                    consumeLine()
+                    start = newline + 1
+                } else {
+                    break
+                }
+            }
+        }
+        if !line.isEmpty { consumeLine() }
+        let records = latest.values.sorted { $0.0 < $1.0 }.map { $0.1 }
+        return claudeSessionTitle(objects: records, sessionID: sessionID)
+    }
+
+    private static func claudePromptPreview(from value: JSONValue?) -> String? {
+        // Filter individual content blocks before joining. Claude Desktop puts
+        // worktree reminders in a separate block before the human's request.
+        if case .array(let values) = value {
+            let text = values.compactMap { item -> String? in
+                let text: String?
+                if let object = item.objectValue {
+                    guard object.string("type") == "text" else { return nil }
+                    text = object.string("text")
+                } else {
+                    text = item.stringValue
+                }
+                guard let text, !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+                      !looksLikeInjectedContext(text) else { return nil }
+                return text
+            }.joined(separator: " ")
+            return text.isEmpty ? nil : text
+        }
+        return previewText(from: value)
     }
 
     private static func codexPreview(
