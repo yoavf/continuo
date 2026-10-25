@@ -199,9 +199,11 @@ struct SessionPickerView: View {
                     }
                     .padding(6)
                 }
-                .onChange(of: highlightedID) {
-                    if let highlightedID {
-                        proxy.scrollTo(highlightedID)
+                // Track the effective row, not `highlightedID`: a query edit
+                // resets that to nil, which falls back to the top result.
+                .onChange(of: highlightedItem?.id) { _, id in
+                    if let id {
+                        proxy.scrollTo(id)
                     }
                 }
             }
