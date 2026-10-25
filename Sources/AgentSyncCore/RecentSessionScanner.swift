@@ -114,6 +114,8 @@ public struct SessionPreview: Identifiable, Equatable, Sendable {
 }
 
 public enum RecentSessionScanner {
+    private static let claudeTitleCache = ClaudeTitleCache()
+
     /// Newest-first previews across all providers.
     public static func scan(
         claudeHome: URL,
@@ -357,7 +359,9 @@ public enum RecentSessionScanner {
                 cwd = value
             }
         }
-        let sourceTitle = (try? readClaudeTitle(from: url, sessionID: sessionID))
+        let sourceTitle = (try? claudeTitleCache.title(for: url, sessionID: sessionID) {
+            try readClaudeTitle(from: url, sessionID: sessionID)
+        })
             ?? claudeSessionTitle(objects: edgeObjects, sessionID: sessionID)
 
         return SessionPreview(

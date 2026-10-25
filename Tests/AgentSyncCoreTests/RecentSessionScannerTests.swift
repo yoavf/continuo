@@ -4,6 +4,72 @@ import Testing
 
 @Suite("Recent session scanner titles")
 struct RecentSessionScannerTests {
+    @Test("Claude title cache reuses missing titles and invalidates on size, modification time, and path")
+    func claudeTitleCacheInvalidation() throws {
+        try withClaudeProject { _, project in
+            let cache = ClaudeTitleCache()
+            let url = project.appendingPathComponent("session.jsonl")
+            let date = Date(timeIntervalSince1970: 1_000)
+            try Data("a".utf8).write(to: url)
+            try FileManager.default.setAttributes([.modificationDate: date], ofItemAtPath: url.path)
+            var reads = 0
+            var recovered: String?
+            func read(_ file: URL) throws -> String? {
+                try cache.title(for: file, sessionID: "session") {
+                    reads += 1
+                    return recovered
+                }
+            }
+            #expect(try read(url) == nil)
+            #expect(try read(url) == nil)
+            #expect(reads == 1)
+
+            recovered = "Added title"
+            try Data("ab".utf8).write(to: url)
+            try FileManager.default.setAttributes([.modificationDate: date], ofItemAtPath: url.path)
+            #expect(try read(url) == "Added title")
+            #expect(reads == 2)
+
+            recovered = "Renamed title"
+            try FileManager.default.setAttributes([.modificationDate: date.addingTimeInterval(1)], ofItemAtPath: url.path)
+            #expect(try read(url) == "Renamed title")
+            #expect(try read(url) == "Renamed title")
+            #expect(reads == 3)
+
+            let copy = project.appendingPathComponent("copy.jsonl")
+            try FileManager.default.copyItem(at: url, to: copy)
+            #expect(try read(copy) == "Renamed title")
+            #expect(reads == 4)
+        }
+    }
+
+    @Test("Claude title cache retries failed reads and files that changed while being scanned")
+    func claudeTitleCacheUnstableReads() throws {
+        try withClaudeProject { _, project in
+            let cache = ClaudeTitleCache()
+            let url = project.appendingPathComponent("session.jsonl")
+            try Data("a".utf8).write(to: url)
+            var reads = 0
+            enum ReadError: Error { case failed }
+            do {
+                _ = try cache.title(for: url, sessionID: "session") { throw ReadError.failed }
+                Issue.record("Expected the read to fail")
+            } catch ReadError.failed {}
+            let first = try cache.title(for: url, sessionID: "session") {
+                reads += 1
+                try Data("ab".utf8).write(to: url)
+                return "Stale title"
+            }
+            #expect(first == "Stale title")
+            let second = try cache.title(for: url, sessionID: "session") {
+                reads += 1
+                return "Current title"
+            }
+            #expect(second == "Current title")
+            #expect(reads == 2)
+        }
+    }
+
     @Test("Claude custom titles in skipped middle records override edge automatic titles")
     func claudeTitleInMiddle() throws {
         try withClaudeProject { root, project in
